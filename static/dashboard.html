@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
   <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script>
-    /* 第一跳：绝对路径 /static/...（http://127.0.0.1:8000 服务方式，主用）
+    /* 第一跳：绝对路径 /static/...（以 http(s) 服务方式访问页面时主用，自动指向当前域名）
        第二跳：相对路径 vendor/...（直接双击 dashboard.html / file:// 方式时生效）
        两跳都失败：不静默，由页面底部脚本给出明确提示（见 window.L 判断处） */
     if (!window.L) {
@@ -1785,13 +1785,16 @@
     "use strict";
 
     /* =====================================================
-       后端 API 基础地址（绝对地址）
-       说明：页面无论以 http://127.0.0.1:8000/ 方式打开，
-       还是以 file:// 双击本地文件方式打开，请求都能准确
-       到达 FastAPI 后端，不会出现 "Failed to fetch"。
-       若以后部署到线上，只需把此处改成正式域名即可。
+       后端 API 基础地址（相对路径）
+       说明：API_BASE 保持空字符串，所有请求形如
+       API_BASE + "/api/xxx" → "/api/xxx"，即相对当前
+       域名发起请求。无论部署到公网域名、内网 IP 还是
+       本机服务，都会自动请求当前源下的接口，
+       不会出现 ERR_CONNECTION_REFUSED。
+       注意：file:// 双击本地打开时相对路径不可用，
+       请通过 http 服务访问页面。
     ===================================================== */
-    var API_BASE = "http://127.0.0.1:8000";
+    var API_BASE = "";
 
     /* =====================================================
        轻提示
@@ -2001,7 +2004,7 @@
          给出可操作的明确提示，而不是笼统的"网络受限" */
       console.error("[地图] Leaflet 加载失败：/static/vendor/leaflet/leaflet.js 与相对路径 vendor/leaflet/leaflet.js 均未生效");
       document.getElementById("map-fallback").textContent =
-        "Leaflet 本地文件加载失败：请确认通过 http://127.0.0.1:8000 访问（而非双击本地文件），并按 F12 在 Network 中查看 leaflet.js 的状态码";
+        "Leaflet 本地文件加载失败：请确认通过 http(s) 服务访问本页面（而非双击本地文件），并按 F12 在 Network 中查看 leaflet.js 的状态码";
       document.getElementById("map-fallback").classList.remove("hidden");
     }
 
