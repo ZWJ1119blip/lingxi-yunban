@@ -1,0 +1,2969 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>沉浸式 AI 文旅伴游工作台</title>
+
+  <!-- Leaflet：纯本地 vendor 文件（static/vendor/leaflet/），随 FastAPI 下发，无任何 CDN 依赖 -->
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script>
+    /* 第一跳：绝对路径 /static/...（http://127.0.0.1:8000 服务方式，主用）
+       第二跳：相对路径 vendor/...（直接双击 dashboard.html / file:// 方式时生效）
+       两跳都失败：不静默，由页面底部脚本给出明确提示（见 window.L 判断处） */
+    if (!window.L) {
+      document.write('<link rel="stylesheet" href="vendor/leaflet/leaflet.css">');
+      document.write('<script src="vendor/leaflet/leaflet.js"><\/script>');
+    }
+  </script>
+
+  <style>
+  /* =====================================================
+     〇、基础重置
+  ===================================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; border-width: 0; border-style: solid; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text-strong);
+    background: var(--page-bg, #ffffff);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button, input, select, textarea { font-family: inherit; }
+  button { cursor: pointer; background: none; border: none; color: inherit; }
+
+  /* =====================================================
+     一、默认变量（= 商务风，body.theme-* 全覆盖同名变量）
+  ===================================================== */
+  :root {
+    --panel-bg: rgba(248, 250, 252, 0.78);
+    --panel-border-color: rgba(30, 58, 138, 0.16);
+    --panel-border-width: 1px;
+    --panel-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
+    --panel-blur: 20px;
+    --panel-inner-glow: none;
+
+    --radius-panel: 20px;
+    --radius-card: 16px;
+    --radius-btn: 12px;
+    --radius-input: 12px;
+    --radius-tab: 10px;
+    --radius-chip: 9999px;
+    --radius-xs: 6px;
+
+    --accent: #2563EB;
+    --accent-2: #1E3A8A;
+    --accent-strong: #1D4ED8;
+    --accent-contrast: #FFFFFF;
+    --accent-soft: rgba(37, 99, 235, 0.10);
+    --accent-ring: rgba(37, 99, 235, 0.28);
+    --surface: #FFFFFF;
+
+    --text-strong: #0F172A;
+    --text-body: #334155;
+    --text-muted: #64748B;
+    --text-faint: #94A3B8;
+
+    --card-bg: rgba(255, 255, 255, 0.72);
+    --card-border-color: rgba(30, 58, 138, 0.12);
+    --card-border-width: 1px;
+    --card-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
+    --card-ring: 0 0 0 1px rgba(30, 58, 138, 0.04);
+    --card-transform: none;
+
+    --input-bg: rgba(226, 232, 240, 0.55);
+    --input-bg-focus: rgba(255, 255, 255, 0.95);
+    --input-border-color: rgba(148, 163, 184, 0.45);
+    --input-border-width: 1px;
+    --focus-ring: rgba(59, 130, 246, 0.30);
+
+    --btn-gradient: linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%);
+    --btn-border-width: 0;
+    --btn-border-color: transparent;
+    --btn-shadow: 0 8px 24px -6px rgba(30, 58, 138, 0.40);
+    --btn-shadow-hover: 0 12px 28px -6px rgba(30, 58, 138, 0.50);
+    --btn-hover-transform: translateY(-1px);
+    --btn-active-transform: translateY(0) scale(0.98);
+    --btn-ghost-bg: rgba(226, 232, 240, 0.70);
+
+    --chip-bg: rgba(37, 99, 235, 0.10);
+    --chip-text: #1D4ED8;
+    --chip-ring: rgba(37, 99, 235, 0.22);
+
+    --divider-color: rgba(30, 58, 138, 0.12);
+    --surface-border: #FFFFFF;
+    --dot-border: #FFFFFF;
+    --dot-size: 14px;
+    --dot-shadow: 0 2px 6px rgba(30, 58, 138, 0.35);
+    --dot-breathe: none;
+    --hover-overlay: rgba(15, 23, 42, 0.05);
+
+    --timeline-from: #3B82F6;
+    --timeline-to: #1E3A8A;
+    --timeline-dash: 0;
+    --track-bg: rgba(148, 163, 184, 0.35);
+
+    --pin-from: #3B82F6;
+    --pin-to: #1E3A8A;
+    --pin-border-width: 2px;
+    --pin-border-color: #FFFFFF;
+    --shadow-pin: 0 10px 24px -6px rgba(30, 58, 138, 0.45);
+    --popup-bg: rgba(255, 255, 255, 0.92);
+    --popup-border-color: rgba(30, 58, 138, 0.12);
+    --popup-border-width: 1px;
+    --thumb-from: #DBEAFE;
+    --thumb-to: #BFDBFE;
+
+    --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.08);
+    --shadow-sm: 0 4px 12px -2px rgba(30, 58, 138, 0.16);
+    --shadow-md: 0 10px 22px -6px rgba(30, 58, 138, 0.20);
+    --shadow-lg: 0 18px 36px -10px rgba(30, 58, 138, 0.24);
+    --shadow-toast: 0 20px 40px -12px rgba(15, 23, 42, 0.35);
+
+    --scrollbar-thumb: rgba(30, 58, 138, 0.22);
+    --toast-bg: rgba(15, 23, 42, 0.88);
+    --toast-text: #FFFFFF;
+
+    /* 地图兜底装饰（默认商务：科技网格） */
+    --decor-display: block;
+    --decor-bg: #0B1220;
+    --decor-grid: rgba(56, 189, 248, 0.12);
+    --decor-glow-1: rgba(37, 99, 235, 0.35);
+    --decor-glow-2: rgba(14, 165, 233, 0.18);
+    --decor-anim: cyber-pan 9s linear infinite;
+    --page-bg: #E8EEF9;
+  }
+
+  /* =====================================================
+     主题 A：简约风 Minimalist
+     纯白 · 极细灰边 · 零阴影零发光 · 只有透明度过渡
+  ===================================================== */
+  body.theme-minimal {
+    --panel-bg: #FFFFFF;
+    --panel-border-color: #E5E7EB;
+    --panel-border-width: 1px;
+    --panel-shadow: none;
+    --panel-blur: 0px;
+    --panel-inner-glow: none;
+
+    --radius-panel: 10px;
+    --radius-card: 8px;
+    --radius-btn: 6px;
+    --radius-input: 6px;
+    --radius-tab: 6px;
+    --radius-chip: 4px;
+    --radius-xs: 3px;
+
+    --accent: #111111;
+    --accent-2: #333333;
+    --accent-strong: #000000;
+    --accent-contrast: #FFFFFF;
+    --accent-soft: rgba(0, 0, 0, 0.05);
+    --accent-ring: rgba(0, 0, 0, 0.14);
+    --surface: #FFFFFF;
+
+    --text-strong: #111111;
+    --text-body: #333333;
+    --text-muted: #666666;
+    --text-faint: #999999;
+
+    --card-bg: #FFFFFF;
+    --card-border-color: #E5E7EB;
+    --card-border-width: 1px;
+    --card-shadow: none;
+    --card-ring: 0 0 0 0 transparent;
+    --card-transform: none;
+
+    --input-bg: #FAFAFA;
+    --input-bg-focus: #FFFFFF;
+    --input-border-color: #E5E7EB;
+    --input-border-width: 1px;
+    --focus-ring: rgba(0, 0, 0, 0.08);
+
+    --btn-gradient: linear-gradient(135deg, #111111 0%, #333333 100%);
+    --btn-border-width: 0;
+    --btn-border-color: transparent;
+    --btn-shadow: none;
+    --btn-shadow-hover: none;
+    --btn-hover-transform: none;
+    --btn-active-transform: none;
+    --btn-ghost-bg: #F5F5F5;
+
+    --chip-bg: #F5F5F5;
+    --chip-text: #333333;
+    --chip-ring: #E5E7EB;
+
+    --divider-color: #E5E7EB;
+    --surface-border: #FFFFFF;
+    --dot-border: #FFFFFF;
+    --dot-size: 10px;
+    --dot-shadow: none;
+    --dot-breathe: none;
+    --hover-overlay: rgba(0, 0, 0, 0.04);
+
+    --timeline-from: #D1D5DB;
+    --timeline-to: #D1D5DB;
+    --timeline-dash: 0;
+    --track-bg: #E5E7EB;
+
+    --pin-from: #111111;
+    --pin-to: #444444;
+    --pin-border-width: 2px;
+    --pin-border-color: #FFFFFF;
+    --shadow-pin: none;
+    --popup-bg: #FFFFFF;
+    --popup-border-color: #E5E7EB;
+    --popup-border-width: 1px;
+    --thumb-from: #F5F5F4;
+    --thumb-to: #E7E5E4;
+
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+    --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+    --toast-bg: rgba(17, 17, 17, 0.90);
+    --toast-text: #FFFFFF;
+
+    /* 地图兜底：纯白 + 极细浅灰网格 */
+    --decor-bg: #FFFFFF;
+    --decor-grid: #F0F0F0;
+    --decor-glow-1: transparent;
+    --decor-glow-2: transparent;
+    --decor-anim: none;
+    --page-bg: #FFFFFF;
+  }
+
+  /* =====================================================
+     主题 B：商务风 Business（默认）
+     玻璃拟态 · 深蓝微光 · 线框标签 + 下划线动画 · 虚线时间轴
+  ===================================================== */
+  body.theme-business {
+    --panel-bg: rgba(248, 250, 252, 0.72);
+    --panel-border-color: rgba(30, 58, 138, 0.18);
+    --panel-border-width: 1px;
+    --panel-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
+    --panel-blur: 20px;
+    --panel-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+    --radius-panel: 20px;
+    --radius-card: 16px;
+    --radius-btn: 12px;
+    --radius-input: 12px;
+    --radius-tab: 10px;
+    --radius-chip: 9999px;
+    --radius-xs: 6px;
+
+    --accent: #2563EB;
+    --accent-2: #1E3A8A;
+    --accent-strong: #1D4ED8;
+    --accent-contrast: #FFFFFF;
+    --accent-soft: rgba(37, 99, 235, 0.10);
+    --accent-ring: rgba(37, 99, 235, 0.28);
+    --surface: #FFFFFF;
+
+    --text-strong: #0F172A;
+    --text-body: #334155;
+    --text-muted: #64748B;
+    --text-faint: #94A3B8;
+
+    --card-bg: rgba(255, 255, 255, 0.68);
+    --card-border-color: rgba(30, 58, 138, 0.12);
+    --card-border-width: 1px;
+    --card-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
+    --card-ring: 0 0 0 1px rgba(30, 58, 138, 0.04);
+    --card-transform: none;
+
+    --input-bg: rgba(226, 232, 240, 0.50);
+    --input-bg-focus: rgba(255, 255, 255, 0.95);
+    --input-border-color: rgba(148, 163, 184, 0.45);
+    --input-border-width: 1px;
+    --focus-ring: rgba(59, 130, 246, 0.28);
+
+    --btn-gradient: linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%);
+    --btn-border-width: 0;
+    --btn-border-color: transparent;
+    --btn-shadow: 0 8px 24px -6px rgba(30, 58, 138, 0.40);
+    --btn-shadow-hover: 0 12px 28px -6px rgba(30, 58, 138, 0.50);
+    --btn-hover-transform: translateY(-1px);
+    --btn-active-transform: translateY(0) scale(0.98);
+    --btn-ghost-bg: rgba(226, 232, 240, 0.65);
+
+    --chip-bg: rgba(37, 99, 235, 0.10);
+    --chip-text: #1D4ED8;
+    --chip-ring: rgba(37, 99, 235, 0.22);
+
+    --divider-color: rgba(30, 58, 138, 0.12);
+    --surface-border: #FFFFFF;
+    --dot-border: #FFFFFF;
+    --dot-size: 12px;
+    --dot-shadow: 0 2px 8px rgba(37, 99, 235, 0.45);
+    --dot-breathe: none;
+    --hover-overlay: rgba(15, 23, 42, 0.05);
+
+    --timeline-from: #3B82F6;
+    --timeline-to: #1E3A8A;
+    --timeline-dash: 6;
+    --track-bg: rgba(148, 163, 184, 0.30);
+
+    --pin-from: #3B82F6;
+    --pin-to: #1E3A8A;
+    --pin-border-width: 2px;
+    --pin-border-color: #FFFFFF;
+    --shadow-pin: 0 10px 24px -6px rgba(30, 58, 138, 0.45);
+    --popup-bg: rgba(255, 255, 255, 0.90);
+    --popup-border-color: rgba(30, 58, 138, 0.12);
+    --popup-border-width: 1px;
+    --thumb-from: #DBEAFE;
+    --thumb-to: #BFDBFE;
+
+    --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.08);
+    --shadow-sm: 0 4px 12px -2px rgba(30, 58, 138, 0.16);
+    --shadow-md: 0 10px 22px -6px rgba(30, 58, 138, 0.20);
+    --shadow-lg: 0 18px 36px -10px rgba(30, 58, 138, 0.24);
+    --shadow-toast: 0 20px 40px -12px rgba(15, 23, 42, 0.35);
+
+    --scrollbar-thumb: rgba(30, 58, 138, 0.22);
+    --toast-bg: rgba(15, 23, 42, 0.88);
+    --toast-text: #FFFFFF;
+
+    /* 地图兜底：深蓝 + 发光科技网格（赛博数据面板） */
+    --decor-bg: #0B1220;
+    --decor-grid: rgba(56, 189, 248, 0.12);
+    --decor-glow-1: rgba(37, 99, 235, 0.35);
+    --decor-glow-2: rgba(14, 165, 233, 0.16);
+    --decor-anim: cyber-pan 9s linear infinite;
+    --page-bg: #E8EEF9;
+  }
+
+  /* =====================================================
+     主题 C：少女风 Girly
+     粉紫渐变 · 大圆角 · 发光 · 呼吸灯圆点 · 浮动标签
+  ===================================================== */
+  body.theme-girly {
+    --panel-bg: rgba(255, 255, 255, 0.62);
+    --panel-border-color: rgba(244, 114, 182, 0.45);
+    --panel-border-width: 1px;
+    --panel-shadow: 0 10px 40px rgba(244, 114, 182, 0.35), 0 2px 12px rgba(192, 132, 252, 0.25);
+    --panel-blur: 22px;
+    --panel-inner-glow: inset 0 0 24px rgba(244, 114, 182, 0.14);
+
+    --radius-panel: 28px;
+    --radius-card: 22px;
+    --radius-btn: 9999px;
+    --radius-input: 18px;
+    --radius-tab: 9999px;
+    --radius-chip: 9999px;
+    --radius-xs: 12px;
+
+    --accent: #F472B6;
+    --accent-2: #C084FC;
+    --accent-strong: #DB2777;
+    --accent-contrast: #FFFFFF;
+    --accent-soft: rgba(244, 114, 182, 0.14);
+    --accent-ring: rgba(244, 114, 182, 0.35);
+    --surface: #FFFFFF;
+
+    --text-strong: #4A2B3D;
+    --text-body: #6B5563;
+    --text-muted: #9A7B8C;
+    --text-faint: #C4A9B8;
+
+    --card-bg: rgba(255, 255, 255, 0.72);
+    --card-border-color: rgba(244, 114, 182, 0.35);
+    --card-border-width: 1px;
+    --card-shadow: 0 12px 32px -8px rgba(244, 114, 182, 0.35);
+    --card-ring: inset 0 0 18px rgba(244, 114, 182, 0.10);
+    --card-transform: none;
+
+    --input-bg: rgba(253, 242, 248, 0.70);
+    --input-bg-focus: #FFFFFF;
+    --input-border-color: rgba(244, 114, 182, 0.45);
+    --input-border-width: 1px;
+    --focus-ring: rgba(244, 114, 182, 0.28);
+
+    --btn-gradient: linear-gradient(135deg, #F472B6 0%, #C084FC 100%);
+    --btn-border-width: 0;
+    --btn-border-color: transparent;
+    --btn-shadow: 0 10px 28px rgba(244, 114, 182, 0.40);
+    --btn-shadow-hover: 0 14px 34px rgba(244, 114, 182, 0.52);
+    --btn-hover-transform: translateY(-2px);
+    --btn-active-transform: translateY(0) scale(0.97);
+    --btn-ghost-bg: rgba(244, 114, 182, 0.14);
+
+    --chip-bg: rgba(244, 114, 182, 0.16);
+    --chip-text: #DB2777;
+    --chip-ring: rgba(244, 114, 182, 0.30);
+
+    --divider-color: rgba(244, 114, 182, 0.25);
+    --surface-border: #FFFFFF;
+    --dot-border: #FFFFFF;
+    --dot-size: 14px;
+    --dot-shadow: 0 0 12px rgba(244, 114, 182, 0.80);
+    --dot-breathe: dot-breathe 1.8s ease-in-out infinite;
+    --hover-overlay: rgba(244, 114, 182, 0.10);
+
+    --timeline-from: #F9A8D4;
+    --timeline-to: #C084FC;
+    --timeline-dash: 0;
+    --track-bg: rgba(244, 114, 182, 0.22);
+
+    --pin-from: #F472B6;
+    --pin-to: #C084FC;
+    --pin-border-width: 2px;
+    --pin-border-color: #FFFFFF;
+    --shadow-pin: 0 10px 26px rgba(244, 114, 182, 0.55);
+    --popup-bg: rgba(255, 255, 255, 0.94);
+    --popup-border-color: rgba(244, 114, 182, 0.30);
+    --popup-border-width: 1px;
+    --thumb-from: #FCE7F3;
+    --thumb-to: #F3E8FF;
+
+    --shadow-xs: 0 2px 8px rgba(244, 114, 182, 0.20);
+    --shadow-sm: 0 6px 18px -4px rgba(244, 114, 182, 0.28);
+    --shadow-md: 0 12px 26px -6px rgba(244, 114, 182, 0.32);
+    --shadow-lg: 0 18px 38px -8px rgba(244, 114, 182, 0.38);
+    --shadow-toast: 0 16px 34px -8px rgba(236, 72, 153, 0.40);
+
+    --scrollbar-thumb: rgba(244, 114, 182, 0.35);
+    --toast-bg: rgba(76, 29, 149, 0.90);
+    --toast-text: #FFFFFF;
+
+    /* 地图兜底：粉紫径向渐变 + 云朵星光 */
+    --decor-bg: radial-gradient(120% 100% at 20% 15%, #FDF2F8 0%, #F5D0FE 45%, #DDD6FE 100%);
+    --decor-grid: rgba(255, 255, 255, 0.35);
+    --decor-glow-1: rgba(244, 114, 182, 0.30);
+    --decor-glow-2: rgba(192, 132, 252, 0.25);
+    --decor-anim: none;
+    --page-bg: #FDF2F8;
+  }
+
+  /* =====================================================
+     主题 D：活泼风 Playful
+     漫画风 · 波普艺术 · 粗黑边 + 硬阴影 · 物理按压反馈
+  ===================================================== */
+  body.theme-playful {
+    --panel-bg: #FFF7D6;
+    --panel-border-color: #111827;
+    --panel-border-width: 3px;
+    --panel-shadow: 8px 8px 0 #111827;
+    --panel-blur: 0px;
+    --panel-inner-glow: none;
+
+    --radius-panel: 22px;
+    --radius-card: 16px;
+    --radius-btn: 14px;
+    --radius-input: 12px;
+    --radius-tab: 9999px;
+    --radius-chip: 9999px;
+    --radius-xs: 8px;
+
+    --accent: #FBBF24;
+    --accent-2: #10B981;
+    --accent-strong: #B45309;
+    --accent-contrast: #1F2937;
+    --accent-soft: rgba(251, 191, 36, 0.28);
+    --accent-ring: #111827;
+    --surface: #FFFFFF;
+
+    --text-strong: #111827;
+    --text-body: #374151;
+    --text-muted: #6B7280;
+    --text-faint: #9CA3AF;
+
+    --card-bg: #FFFFFF;
+    --card-border-color: #111827;
+    --card-border-width: 3px;
+    --card-shadow: 4px 4px 0 #111827;
+    --card-ring: 0 0 0 0 transparent;
+    --card-transform: rotate(-0.5deg);
+
+    --input-bg: #FFFFFF;
+    --input-bg-focus: #FFFBEB;
+    --input-border-color: #111827;
+    --input-border-width: 2px;
+    --focus-ring: rgba(17, 24, 39, 0.16);
+
+    --btn-gradient: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%);
+    --btn-border-width: 3px;
+    --btn-border-color: #111827;
+    --btn-shadow: 4px 4px 0 #111827;
+    --btn-shadow-hover: 2px 2px 0 #111827;
+    --btn-hover-transform: translate(2px, 2px);
+    --btn-active-transform: translate(4px, 4px);
+    --btn-ghost-bg: #FFFFFF;
+
+    --chip-bg: #FBBF24;
+    --chip-text: #1F2937;
+    --chip-ring: #111827;
+
+    --divider-color: #111827;
+    --surface-border: #FFFFFF;
+    --dot-border: #111827;
+    --dot-size: 16px;
+    --dot-shadow: 2px 2px 0 #111827;
+    --dot-breathe: none;
+    --hover-overlay: rgba(17, 24, 39, 0.07);
+
+    --timeline-from: #FBBF24;
+    --timeline-to: #10B981;
+    --timeline-dash: 0;
+    --track-bg: rgba(17, 24, 39, 0.14);
+
+    --pin-from: #FBBF24;
+    --pin-to: #10B981;
+    --pin-border-width: 3px;
+    --pin-border-color: #111827;
+    --shadow-pin: 3px 3px 0 #111827;
+    --popup-bg: #FFFFFF;
+    --popup-border-color: #111827;
+    --popup-border-width: 3px;
+    --thumb-from: #FEF3C7;
+    --thumb-to: #D1FAE5;
+
+    --shadow-xs: 2px 2px 0 #111827;
+    --shadow-sm: 3px 3px 0 #111827;
+    --shadow-md: 4px 4px 0 #111827;
+    --shadow-lg: 5px 5px 0 #111827;
+    --shadow-toast: 4px 4px 0 #111827;
+
+    --scrollbar-thumb: rgba(17, 24, 39, 0.30);
+    --toast-bg: #111827;
+    --toast-text: #FBBF24;
+
+    /* 地图兜底：亮黄 + 黑色波点 */
+    --decor-bg: #FDE047;
+    --decor-grid: #111827;
+    --decor-glow-1: rgba(16, 185, 129, 0.18);
+    --decor-glow-2: rgba(251, 191, 36, 0.20);
+    --decor-anim: polka-drift 6s linear infinite;
+    --page-bg: #FEF08A;
+  }
+
+  /* =====================================================
+     二、布局 / 间距 / 字体工具类（纯结构，无颜色硬编码）
+  ===================================================== */
+  .relative { position: relative; }
+  .absolute { position: absolute; }
+  .fixed { position: fixed; }
+  .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+  .w-screen { width: 100vw; }
+  .h-screen { height: 100vh; }
+  .w-full { width: 100%; }
+  .h-full { height: 100%; }
+  .w-96 { width: 24rem; }
+  .max-w-\[calc\(100vw-3rem\)\] { max-width: calc(100vw - 3rem); }
+  .top-6 { top: 1.5rem; }
+  .left-6 { left: 1.5rem; }
+  .bottom-6 { bottom: 1.5rem; }
+  .z-\[1000\] { z-index: 1000; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .flex-1 { flex: 1 1 0%; }
+  .flex-nowrap { flex-wrap: nowrap; }
+  .whitespace-nowrap { white-space: nowrap; }
+  .items-center { align-items: center; }
+  .items-start { align-items: flex-start; }
+  .justify-center { justify-content: center; }
+  .justify-between { justify-content: space-between; }
+  .justify-end { justify-content: flex-end; }
+  .gap-1 { gap: 0.25rem; }
+  .gap-1\.5 { gap: 0.375rem; }
+  .gap-2 { gap: 0.5rem; }
+  .gap-3 { gap: 0.75rem; }
+  .gap-4 { gap: 1rem; }
+  .grid { display: grid; }
+  .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hidden { display: none !important; }
+  .overflow-hidden { overflow: hidden; }
+  .overflow-y-auto { overflow-y: auto; }
+  .overflow-x-auto { overflow-x: auto; }
+  .min-w-0 { min-width: 0; }
+  .mx-auto { margin-left: auto; margin-right: auto; }
+  .ml-auto { margin-left: auto; }
+  .block { display: block; }
+  .shrink-0 { flex-shrink: 0; }
+  .w-7 { width: 1.75rem; }
+  .h-7 { height: 1.75rem; }
+  .w-9 { width: 2.25rem; }
+  .w-11 { width: 2.75rem; }
+  .h-11 { height: 2.75rem; }
+  .w-14 { width: 3.5rem; }
+  .w-1\/3 { width: 33.333333%; }
+  .max-w-\[80\%\] { max-width: 80%; }
+  .h-1\.5 { height: 0.375rem; }
+  .h-3\.5 { height: 0.875rem; }
+  .w-3\.5 { width: 0.875rem; }
+  .p-3 { padding: 0.75rem; }
+  .p-4 { padding: 1rem; }
+  .px-2\.5 { padding-left: 0.625rem; padding-right: 0.625rem; }
+  .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .px-3\.5 { padding-left: 0.875rem; padding-right: 0.875rem; }
+  .px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+  .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+  .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .py-10 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+  .pt-6 { padding-top: 1.5rem; }
+  .pb-4 { padding-bottom: 1rem; }
+  .pb-6 { padding-bottom: 1.5rem; }
+  .mt-0\.5 { margin-top: 0.125rem; }
+  .mt-1 { margin-top: 0.25rem; }
+  .mt-1\.5 { margin-top: 0.375rem; }
+  .mt-2 { margin-top: 0.5rem; }
+  .mt-3 { margin-top: 0.75rem; }
+  .mt-4 { margin-top: 1rem; }
+  .mt-5 { margin-top: 1.25rem; }
+  .-left-6 { left: -1.5rem; }
+  .pl-6 { padding-left: 1.5rem; }
+  .top-1\.5 { top: 0.375rem; }
+  .top-2 { top: 0.5rem; }
+  .bottom-2 { bottom: 0.5rem; }
+  .left-\[7px\] { left: 7px; }
+  .space-y-1\.5 > * + * { margin-top: 0.375rem; }
+  .space-y-2\.5 > * + * { margin-top: 0.625rem; }
+  .space-y-3 > * + * { margin-top: 0.75rem; }
+  .space-y-4 > * + * { margin-top: 1rem; }
+  .space-y-5 > * + * { margin-top: 1.25rem; }
+  .font-sans {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+  .antialiased { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .text-\[10px\] { font-size: 10px; }
+  .text-\[11px\] { font-size: 11px; }
+  .text-xs { font-size: 12px; }
+  .text-sm { font-size: 14px; }
+  .text-base { font-size: 16px; }
+  .text-lg { font-size: 18px; }
+  .text-2xl { font-size: 24px; }
+  .text-3xl { font-size: 30px; }
+  .font-medium { font-weight: 500; }
+  .font-semibold { font-weight: 600; }
+  .font-bold { font-weight: 700; }
+  .leading-relaxed { line-height: 1.625; }
+  .text-center { text-align: center; }
+  .text-right { text-align: right; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .text-white { color: var(--accent-contrast); }
+  .text-gray-300 { color: var(--text-faint); }
+  .text-gray-400 { color: var(--text-faint); }
+  .text-gray-500 { color: var(--text-muted); }
+  .text-gray-600 { color: var(--text-body); }
+  .text-slate-600 { color: var(--text-body); }
+  .text-slate-700 { color: var(--text-body); }
+  .text-slate-800 { color: var(--text-strong); }
+  .text-emerald-500 { color: var(--accent); }
+  .text-emerald-600 { color: var(--accent-strong); }
+  .text-emerald-700 { color: var(--accent-strong); }
+  .text-transparent { color: transparent; }
+  .placeholder\:text-gray-400::placeholder { color: var(--text-faint); }
+  .bg-white { background-color: var(--surface); }
+  .bg-white\/60 { background-color: var(--card-bg); }
+  .bg-white\/70 { background-color: var(--panel-bg); }
+  .bg-white\/80 { background-color: var(--popup-bg); }
+  .bg-gray-100\/50 { background-color: var(--input-bg); }
+  .bg-gray-100\/70 { background-color: var(--btn-ghost-bg); }
+  .bg-gray-100\/80 { background-color: var(--btn-ghost-bg); }
+  .bg-gray-200\/80 { background-color: var(--track-bg); }
+  .bg-black\/5 { background-color: var(--hover-overlay); }
+  .bg-emerald-50 { background-color: var(--accent-soft); }
+  .bg-emerald-500 { background-color: var(--accent); }
+  .bg-teal-500 { background-color: var(--accent-2); }
+  .bg-gradient-to-r { background-image: linear-gradient(to right, var(--grad-from, var(--accent)), var(--grad-to, var(--accent-2))); }
+  .bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--grad-from, var(--accent)), var(--grad-to, var(--accent-2))); }
+  .bg-gradient-to-b { background-image: linear-gradient(to bottom, var(--grad-from, var(--accent)), var(--grad-to, var(--accent-2))); }
+  .from-emerald-400 { --grad-from: var(--accent); }
+  .from-emerald-500 { --grad-from: var(--accent); }
+  .from-emerald-600 { --grad-from: var(--accent-strong); }
+  .from-amber-100 { --grad-from: var(--thumb-from); }
+  .to-teal-300 { --grad-to: var(--timeline-to); }
+  .to-teal-500 { --grad-to: var(--accent-2); }
+  .to-orange-100 { --grad-to: var(--thumb-to); }
+  .bg-clip-text { -webkit-background-clip: text; background-clip: text; }
+
+  /* =====================================================
+     三、通用组件（全部变量驱动，四主题自动换材质）
+  ===================================================== */
+  /* 主按钮 */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    background-color: var(--accent);
+    background-image: var(--btn-gradient);
+    color: var(--accent-contrast);
+    border-width: var(--btn-border-width);
+    border-style: solid;
+    border-color: var(--btn-border-color);
+    border-radius: var(--radius-btn);
+    box-shadow: var(--btn-shadow);
+    font-weight: 600;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+  }
+  .btn-primary:hover { transform: var(--btn-hover-transform); box-shadow: var(--btn-shadow-hover); filter: brightness(1.04); }
+  .btn-primary:active { transform: var(--btn-active-transform); box-shadow: var(--btn-shadow); }
+
+  /* 次级按钮 */
+  .btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;
+    background: var(--btn-ghost-bg);
+    color: var(--text-body);
+    border-width: var(--btn-border-width);
+    border-style: solid;
+    border-color: var(--btn-border-color);
+    border-radius: 9999px;
+    font-weight: 500;
+    transition: all 0.18s ease;
+  }
+  .btn-ghost:hover { background: var(--hover-overlay); }
+
+  /* 输入框 */
+  .input-soft {
+    background: var(--input-bg);
+    border-width: var(--input-border-width);
+    border-style: solid;
+    border-color: var(--input-border-color);
+    border-radius: var(--radius-input);
+    color: var(--text-body);
+    transition: all 0.18s ease;
+  }
+  .input-soft::placeholder { color: var(--text-faint); }
+  .input-soft:focus {
+    background: var(--input-bg-focus);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+    outline: none;
+  }
+
+  /* 卡片 */
+  .card {
+    background: var(--card-bg);
+    border-width: var(--card-border-width);
+    border-style: solid;
+    border-color: var(--card-border-color);
+    box-shadow: var(--card-shadow), var(--card-ring);
+    border-radius: var(--radius-card);
+    transform: var(--card-transform);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  }
+
+  /* 胶囊 */
+  .chip {
+    display: inline-flex; align-items: center;
+    background: var(--chip-bg);
+    color: var(--chip-text);
+    border-radius: var(--radius-chip);
+    box-shadow: 0 0 0 1px var(--chip-ring);
+    font-weight: 500;
+  }
+
+  /* 标签（默认=商务线框风，其余主题在下方覆盖） */
+  .tab {
+    position: relative; flex-shrink: 0;
+    border-radius: var(--radius-tab);
+    padding: 0.4rem 0.75rem; /* 收窄为 px-3，6 个标签横向滑动更丝滑 */
+    font-size: 12px; font-weight: 500;
+    color: var(--text-body);
+    background: transparent;
+    border: 1px solid var(--divider-color);
+    transition: all 0.18s ease;
+    white-space: nowrap;
+  }
+  /* 顶部标签栏：横向滑动 + 隐藏滚动条 + 触摸惯性 + 防止带动页面横向滚动 */
+  #tabs {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .tab:hover { background: var(--hover-overlay); }
+  .tab-active {
+    background: transparent;
+    color: var(--accent-strong);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .tab-active:hover { background: transparent; }
+  /* 商务：选中底部下划线动画 */
+  .tab-active::after {
+    content: ""; position: absolute; left: 18%; right: 18%; bottom: -1px; height: 2px;
+    background: var(--accent); border-radius: 9999px;
+    animation: underline-grow 0.28s ease;
+  }
+  @keyframes underline-grow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* 时间轴 */
+  .timeline-rail {
+    position: absolute; left: 6px; top: 10px; bottom: 10px; width: 2px;
+    border-radius: 9999px;
+    background: linear-gradient(to bottom, var(--timeline-from), var(--timeline-to));
+  }
+  body.theme-business .timeline-rail {
+    background: repeating-linear-gradient(to bottom,
+      var(--timeline-from) 0 6px, transparent 6px 12px);
+  }
+  .timeline-dot {
+    position: absolute; left: 0; top: 0.4rem;
+    width: var(--dot-size); height: var(--dot-size);
+    border-radius: 9999px;
+    background: var(--accent);
+    border: 2px solid var(--dot-border);
+    box-shadow: var(--dot-shadow);
+    animation: var(--dot-breathe);
+  }
+  @keyframes dot-breathe {
+    0%, 100% { box-shadow: 0 0 8px rgba(244, 114, 182, 0.55); transform: scale(1); }
+    50% { box-shadow: 0 0 18px rgba(244, 114, 182, 0.95); transform: scale(1.15); }
+  }
+
+  /* 行程交通连接（景点之间的虚线 + 交通建议，智能交通规划） */
+  .trip-transport {
+    position: relative;
+    margin: 0.35rem 0 0.6rem;
+    padding-left: 1.6rem;
+  }
+  .trip-transport::before {
+    content: "";
+    position: absolute; left: 6px; top: -0.35rem; bottom: -0.35rem;
+    width: 0;
+    border-left: 2px dashed var(--timeline-to, #CBD5E1);
+    opacity: 0.7;
+  }
+  .trip-transport-text {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 11px; line-height: 1.5;
+    color: var(--text-muted, #64748B);
+    background: var(--chip-bg, rgba(241, 245, 249, 0.8));
+  }
+
+  /* 聊天气泡 */
+  .bubble-user {
+    background: var(--accent);
+    color: var(--accent-contrast);
+    border-width: var(--btn-border-width);
+    border-style: solid;
+    border-color: var(--btn-border-color);
+    box-shadow: var(--shadow-sm);
+  }
+  .bubble-ai {
+    background: var(--card-bg);
+    color: var(--text-body);
+    border-width: var(--card-border-width);
+    border-style: solid;
+    border-color: var(--card-border-color);
+    box-shadow: var(--card-shadow);
+  }
+
+  /* 滚动条 */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .thin-scroll::-webkit-scrollbar { width: 4px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; }
+  .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  /* 面板切换淡入 */
+  .tab-panel { animation: fadeUp 0.25s ease; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 语速滑块 */
+  input[type=range] { accent-color: var(--accent); height: 4px; }
+
+  /* 识景缩略图 / 修正输入框 */
+  .vision-thumb {
+    width: 64px; height: 64px; border-radius: var(--radius-card); flex-shrink: 0;
+    background-size: cover; background-position: center;
+    border-width: var(--card-border-width); border-style: solid; border-color: var(--card-border-color);
+  }
+  .vision-name-input {
+    font-size: 14px; font-weight: 600; color: var(--text-strong);
+    border: 1px solid var(--accent); border-radius: var(--radius-xs);
+    padding: 2px 8px; width: 130px; outline: none; background: var(--surface);
+  }
+
+  /* （数字向导「游小仙」改为单人头像展示，人设卡样式已移除） */
+
+  /* 分享风格按钮 */
+  .style-btn {
+    background: var(--btn-ghost-bg);
+    color: var(--text-body);
+    border-width: var(--btn-border-width);
+    border-style: solid;
+    border-color: var(--btn-border-color);
+    border-radius: var(--radius-btn);
+    transition: all 0.18s ease;
+  }
+  .style-btn:hover { background: var(--hover-overlay); }
+  .style-active { background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-sm); }
+  .style-active:hover { background: var(--accent); }
+
+  /* =====================================================
+     一键分享：滑动卡片（scroll-snap 实现，左右滑动/按钮均可切换）
+     ===================================================== */
+  .share-stage { position: relative; }
+  .share-track {
+    display: flex; gap: 0.75rem;
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;   /* 核心：松手后自动吸附到整张卡片 */
+    -webkit-overflow-scrolling: touch;
+  }
+  .share-card {
+    flex: 0 0 100%; min-width: 0;
+    scroll-snap-align: center;       /* 每张卡片居中吸附 */
+  }
+  .share-card-inner {
+    background: var(--card-bg);
+    border-width: var(--card-border-width); border-style: solid; border-color: var(--card-border-color);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow), var(--card-ring);
+    padding: 1rem;
+  }
+  .share-card-head { display: flex; align-items: center; gap: 0.5rem; }
+  .share-card-icon { font-size: 18px; }
+  .share-card-name { font-size: 14px; font-weight: 600; color: var(--text-strong); }
+  .share-card-tag {
+    margin-left: auto; font-size: 10px; font-weight: 500;
+    color: var(--accent-strong); background: var(--accent-soft);
+    border-radius: 9999px; padding: 0.1rem 0.5rem;
+  }
+  .share-card-body {
+    margin-top: 0.6rem; font-size: 14px; line-height: 1.625;
+    color: var(--text-body); min-height: 5.5rem; white-space: pre-line;
+  }
+  .share-card-foot {
+    margin-top: 0.75rem; display: flex; align-items: center; justify-content: space-between;
+  }
+  .share-card-count { font-size: 12px; color: var(--text-faint); }
+  /* 左右切换按钮（悬浮在卡片两侧） */
+  .share-nav-btn {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 2rem; height: 2rem; border-radius: 9999px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; line-height: 1; color: var(--text-body);
+    background: var(--popup-bg, #FFFFFF);
+    border-width: var(--card-border-width); border-style: solid; border-color: var(--card-border-color);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.12));
+    transition: transform 0.18s ease, opacity 0.18s ease;
+    z-index: 2;
+  }
+  .share-nav-btn:hover { transform: translateY(-50%) scale(1.1); }
+  .share-nav-btn:active { transform: translateY(-50%) scale(0.95); }
+  .share-nav-btn[disabled] { opacity: 0.35; pointer-events: none; }
+  #share-prev { left: -0.5rem; }
+  #share-next { right: -0.5rem; }
+  /* 指示点 */
+  .share-dots { display: flex; justify-content: center; gap: 0.4rem; }
+  .share-dot {
+    width: 6px; height: 6px; border-radius: 9999px;
+    background: var(--text-faint); opacity: 0.4;
+    transition: all 0.25s ease; cursor: pointer;
+  }
+  .share-dot.active { opacity: 1; background: var(--accent); width: 16px; }
+
+  /* 音频波形 */
+  .wave { display: flex; align-items: flex-end; gap: 3px; height: 22px; }
+  .wave span { width: 3px; border-radius: 9999px; background: var(--accent); height: 6px; }
+  .wave.playing span { animation: wave-bounce 0.9s ease-in-out infinite; }
+  .wave.playing span:nth-child(2) { animation-delay: 0.15s; }
+  .wave.playing span:nth-child(3) { animation-delay: 0.3s; }
+  .wave.playing span:nth-child(4) { animation-delay: 0.45s; }
+  .wave.playing span:nth-child(5) { animation-delay: 0.6s; }
+  @keyframes wave-bounce { 0%, 100% { height: 6px; } 50% { height: 20px; } }
+
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%) translateY(20px);
+    background: var(--toast-bg); color: var(--toast-text); font-size: 13px;
+    padding: 0.5rem 1rem; border-radius: 9999px; box-shadow: var(--shadow-toast);
+    opacity: 0; pointer-events: none; transition: all 0.25s ease; z-index: 2000;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* =====================================================
+     四、地图兜底装饰层（瓦片失败时按主题呈现）
+  ===================================================== */
+  .map-decor {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-color: var(--decor-bg);
+    background-image:
+      linear-gradient(var(--decor-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--decor-grid) 1px, transparent 1px),
+      radial-gradient(60% 55% at 22% 18%, var(--decor-glow-1), transparent 70%),
+      radial-gradient(55% 50% at 82% 85%, var(--decor-glow-2), transparent 70%);
+    background-size: 46px 46px, 46px 46px, 100% 100%, 100% 100%;
+    animation: var(--decor-anim);
+  }
+  @keyframes cyber-pan { to { background-position: 0 46px, 46px 0, 0 0, 0 0; } }
+  @keyframes polka-drift { to { background-position: 0 46px, 46px 0, 0 0, 0 0; } }
+
+  #map { z-index: 1; background: transparent; }
+
+  /* —— 简约：纯白 + 极细浅灰网格（静态） —— */
+  body.theme-minimal .map-decor {
+    background-image:
+      linear-gradient(var(--decor-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--decor-grid) 1px, transparent 1px);
+    background-size: 28px 28px, 28px 28px;
+    animation: none;
+  }
+
+  /* —— 商务：深蓝 + 发光科技网格（赛博数据面板） —— */
+  body.theme-business .map-decor {
+    background-image:
+      linear-gradient(var(--decor-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--decor-grid) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.05) 1px, transparent 1px),
+      radial-gradient(60% 55% at 22% 18%, var(--decor-glow-1), transparent 70%),
+      radial-gradient(55% 50% at 82% 85%, var(--decor-glow-2), transparent 70%);
+    background-size: 46px 46px, 46px 46px, 230px 230px, 100% 100%, 100% 100%;
+    box-shadow: inset 0 0 220px rgba(37, 99, 235, 0.28);
+  }
+  body.theme-business .map-decor::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 90px;
+    background: linear-gradient(to bottom, transparent, rgba(56, 189, 248, 0.10), transparent);
+    animation: scanline 5s linear infinite;
+  }
+  @keyframes scanline { from { top: -90px; } to { top: 100%; } }
+
+  /* —— 少女：粉紫渐变 + 飘浮云朵 + 星光闪烁 —— */
+  body.theme-girly .map-decor {
+    background-image:
+      radial-gradient(circle at 18% 22%, var(--decor-glow-1), transparent 42%),
+      radial-gradient(circle at 80% 78%, var(--decor-glow-2), transparent 45%),
+      radial-gradient(120% 100% at 20% 15%, #FDF2F8 0%, #F5D0FE 45%, #DDD6FE 100%);
+    background-size: 100% 100%, 100% 100%, 100% 100%;
+    animation: none;
+  }
+  .cloud, .star { position: absolute; display: none; }
+  body.theme-girly .cloud, body.theme-girly .star { display: block; }
+  body.theme-girly .cloud {
+    width: 120px; height: 40px; border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.85);
+    filter: blur(2px);
+    box-shadow: 40px -14px 0 -6px rgba(255, 255, 255, 0.85),
+                -38px -10px 0 -10px rgba(255, 255, 255, 0.85);
+    animation: cloud-drift 26s linear infinite;
+  }
+  body.theme-girly .cloud.c2 { width: 90px; height: 32px; animation-duration: 34s; animation-delay: -12s; opacity: 0.75; }
+  body.theme-girly .cloud.c3 { width: 150px; height: 46px; animation-duration: 44s; animation-delay: -26s; opacity: 0.6; }
+  @keyframes cloud-drift {
+    from { transform: translateX(-30vw); }
+    to { transform: translateX(130vw); }
+  }
+  body.theme-girly .star {
+    width: 6px; height: 6px; border-radius: 9999px;
+    background: #FFFFFF;
+    box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.9);
+    animation: twinkle 2.4s ease-in-out infinite;
+  }
+  body.theme-girly .star.s2 { animation-delay: 0.6s; }
+  body.theme-girly .star.s3 { animation-delay: 1.2s; }
+  body.theme-girly .star.s4 { animation-delay: 1.8s; }
+  body.theme-girly .star.s5 { width: 4px; height: 4px; animation-delay: 2.1s; }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.15; transform: scale(0.7); }
+    50% { opacity: 1; transform: scale(1.25); }
+  }
+
+  /* —— 活泼：亮黄 + 黑色波点 —— */
+  body.theme-playful .map-decor {
+    background-image:
+      radial-gradient(circle at 12px 12px, var(--decor-grid) 5px, transparent 6px),
+      radial-gradient(60% 55% at 22% 18%, var(--decor-glow-1), transparent 70%),
+      radial-gradient(55% 50% at 82% 85%, var(--decor-glow-2), transparent 70%);
+    background-size: 52px 52px, 100% 100%, 100% 100%;
+    animation: polka-drift 7s linear infinite;
+  }
+
+  /* 暗角（简约/活泼关闭，保持各自纯粹） */
+  .map-vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 400;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(15, 23, 42, 0.14) 100%);
+  }
+  body.theme-minimal .map-vignette { display: none; }
+  body.theme-playful .map-vignette { display: none; }
+
+  /* 瓦片哑光（仅商务/少女轻微，简约保持原图，活泼无所谓——统一轻哑光） */
+  .leaflet-tile-pane { filter: grayscale(15%) brightness(94%); }
+  body.theme-minimal .leaflet-tile-pane { filter: none; }
+  .leaflet-container { font-family: inherit; background: transparent; }
+  .leaflet-container a { color: var(--accent-strong); }
+  .leaflet-control-zoom a {
+    background: var(--popup-bg); color: var(--text-strong);
+    border-color: var(--divider-color);
+    border-width: var(--popup-border-width);
+  }
+  .leaflet-control-zoom a:hover { background: var(--hover-overlay); }
+  .leaflet-control-attribution { background: var(--popup-bg); color: var(--text-faint); }
+
+  /* 地图弹窗 */
+  .leaflet-popup-content-wrapper {
+    background: var(--popup-bg);
+    border-width: var(--popup-border-width);
+    border-style: solid;
+    border-color: var(--popup-border-color);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-md);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  }
+  body.theme-minimal .leaflet-popup-content-wrapper { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  body.theme-playful .leaflet-popup-content-wrapper { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.5; width: 190px !important; }
+  .leaflet-popup-tip { background: var(--popup-bg); }
+  .popup-title { font-weight: 600; color: var(--text-strong); font-size: 14px; }
+  .popup-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .popup-notice { color: var(--text-faint); font-size: 11px; margin-top: 8px; }
+
+  /* 数字标记 + 呼吸光圈 */
+  .map-pin {
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 9999px;
+    background: linear-gradient(135deg, var(--pin-from), var(--pin-to));
+    color: var(--accent-contrast); font-weight: 700; font-size: 14px;
+    border-width: var(--pin-border-width);
+    border-style: solid;
+    border-color: var(--pin-border-color);
+    box-shadow: var(--shadow-pin);
+    position: relative;
+  }
+  .map-pin::after {
+    content: ""; position: absolute; inset: -6px; border-radius: 9999px;
+    border: 2px solid var(--accent);
+    opacity: 0.55;
+    animation: pin-pulse 2s ease-out infinite;
+  }
+  @keyframes pin-pulse {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.15); opacity: 0; }
+  }
+
+  /* 路线流动连线 */
+  .route-line { stroke: var(--accent); stroke-dasharray: 10 14; animation: dash-flow 1.2s linear infinite; }
+  @keyframes dash-flow { to { stroke-dashoffset: -24; } }
+
+  /* =====================================================
+     五、四套主题的装饰细节覆盖
+  ===================================================== */
+  /* —— 简约：零阴影零发光，只有透明度过渡，无缩放 —— */
+  body.theme-minimal .card { box-shadow: none; }
+  body.theme-minimal .card:hover { background: #FFFFFF; }
+  body.theme-minimal .btn-primary:hover { filter: none; opacity: 0.85; }
+  body.theme-minimal .tab { border-color: transparent; }
+  body.theme-minimal .tab-active { border-color: #111111; }
+  body.theme-minimal .tab-active::after { background: #111111; }
+  body.theme-minimal .map-pin::after { display: none; }
+  body.theme-minimal .route-line { animation: none; }
+
+  /* —— 商务：线框标签 + 下划线（已在通用区实现），此处补玻璃高光 —— */
+  body.theme-business .card { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  body.theme-business .yx-avatar { box-shadow: 0 8px 32px rgba(30, 58, 138, 0.15); }
+
+  /* —— 少女：浮动标签 + ✨ 按钮 + 梦幻细节 —— */
+  body.theme-girly .tab { border-color: rgba(244, 114, 182, 0.35); background: rgba(255, 255, 255, 0.45); }
+  body.theme-girly .tab:hover { background: rgba(255, 255, 255, 0.75); }
+  body.theme-girly .tab-active {
+    background: linear-gradient(135deg, #F472B6, #C084FC);
+    color: #FFFFFF;
+    border-color: transparent;
+    animation: tab-float 2s ease-in-out infinite;
+    box-shadow: 0 8px 22px rgba(244, 114, 182, 0.45);
+  }
+  body.theme-girly .tab-active::after { display: none; }
+  @keyframes tab-float {
+    0%, 100% { transform: translateY(0) scale(1.03); }
+    50% { transform: translateY(-3px) scale(1.06); }
+  }
+  body.theme-girly .btn-primary::before { content: "✨"; font-size: 0.85em; }
+  body.theme-girly .btn-ghost::before { content: "🌸"; font-size: 0.85em; }
+  body.theme-girly .card { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  body.theme-girly .map-pin::after { display: none; }
+  body.theme-girly .chip { box-shadow: 0 0 12px rgba(244, 114, 182, 0.45); }
+
+  /* —— 活泼：漫画卡片错位 + 按压物理反馈 —— */
+  body.theme-playful .card:nth-child(even) { transform: rotate(0.6deg); }
+  body.theme-playful .card:hover { transform: rotate(0deg) translate(1px, 1px); box-shadow: 3px 3px 0 #111827; }
+  body.theme-playful .card:nth-child(even):hover { transform: rotate(0deg) translate(1px, 1px); }
+  body.theme-playful .tab { border-width: 2px; border-color: #111827; background: #FFFFFF; }
+  body.theme-playful .tab-active {
+    background: var(--accent); color: var(--accent-contrast);
+    border-color: #111827;
+    box-shadow: 3px 3px 0 #111827;
+  }
+  body.theme-playful .tab-active::after { display: none; }
+  body.theme-playful .timeline-dot { background: linear-gradient(135deg, #FBBF24, #10B981); }
+  body.theme-playful .map-pin { border-radius: 30%; }
+  body.theme-playful .bubble-user { box-shadow: 3px 3px 0 #111827; }
+  body.theme-playful .bubble-ai { box-shadow: 4px 4px 0 #111827; }
+
+  /* =====================================================
+     六、主题切换器（左上角，悬浮于地图之上）
+  ===================================================== */
+  .theme-switcher { position: fixed; top: 1.5rem; left: calc(24rem + 2.5rem); z-index: 1200; }
+  .theme-toggle {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.5rem 0.9rem; border-radius: 9999px;
+    background: var(--panel-bg);
+    -webkit-backdrop-filter: blur(var(--panel-blur)); backdrop-filter: blur(var(--panel-blur));
+    border-width: var(--panel-border-width); border-style: solid; border-color: var(--panel-border-color);
+    box-shadow: var(--shadow-md);
+    color: var(--text-strong); font-size: 13px; font-weight: 600;
+    transition: all 0.18s ease;
+  }
+  .theme-toggle:hover { box-shadow: var(--shadow-lg); }
+  body.theme-minimal .theme-toggle { box-shadow: none; }
+  body.theme-playful .theme-toggle { box-shadow: 4px 4px 0 #111827; border-width: 3px; }
+  .theme-dot {
+    width: 14px; height: 14px; border-radius: 9999px; flex-shrink: 0;
+    border: 1px solid var(--divider-color);
+  }
+  .dot-minimal { background: linear-gradient(135deg, #ffffff, #d4d4d4); }
+  .dot-business { background: linear-gradient(135deg, #3B82F6, #1E3A8A); }
+  .dot-girly { background: linear-gradient(135deg, #F472B6, #C084FC); }
+  .dot-playful { background: linear-gradient(135deg, #FBBF24, #10B981); }
+  .theme-caret { font-size: 10px; color: var(--text-muted); }
+  .theme-menu {
+    position: absolute; top: calc(100% + 0.5rem); left: 0; width: 176px;
+    padding: 0.375rem; border-radius: var(--radius-card);
+    background: var(--panel-bg);
+    -webkit-backdrop-filter: blur(var(--panel-blur)); backdrop-filter: blur(var(--panel-blur));
+    border-width: var(--panel-border-width); border-style: solid; border-color: var(--panel-border-color);
+    box-shadow: var(--shadow-lg);
+    display: flex; flex-direction: column; gap: 0.125rem;
+  }
+  body.theme-playful .theme-menu { border-width: 3px; box-shadow: 5px 5px 0 #111827; }
+  .theme-menu button {
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.5rem 0.625rem; border-radius: var(--radius-btn);
+    font-size: 13px; color: var(--text-body); text-align: left;
+    transition: all 0.15s ease;
+  }
+  .theme-menu button:hover { background: var(--hover-overlay); }
+  .theme-menu button.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .swatch {
+    width: 18px; height: 18px; border-radius: 9999px; flex-shrink: 0;
+    border: 1px solid var(--divider-color);
+  }
+  .sw-minimal { background: linear-gradient(135deg, #ffffff, #d4d4d4); }
+  .sw-business { background: linear-gradient(135deg, #3B82F6, #1E3A8A); }
+  .sw-girly { background: linear-gradient(135deg, #F472B6, #C084FC); }
+  .sw-playful { background: linear-gradient(135deg, #FBBF24, #10B981); }
+
+  /* 底图加载失败提示条 */
+  .map-fallback {
+    position: fixed; left: 50%; top: 1.5rem; transform: translateX(-50%);
+    background: var(--popup-bg);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    border-width: var(--popup-border-width); border-style: solid; border-color: var(--popup-border-color);
+    border-radius: 9999px;
+    padding: 0.5rem 1.125rem; font-size: 12px; color: var(--text-body);
+    box-shadow: var(--shadow-md); z-index: 1500;
+  }
+
+  /* 小屏适配 */
+  @media (max-width: 767px) {
+    .panel { left: 1rem; right: 1rem; width: auto; top: 4.75rem; bottom: 1rem; max-height: calc(100vh - 6rem); }
+    .theme-switcher { top: 1rem; left: 1rem; }
+  }
+
+  /* =====================================================
+     七、圆角 / 边框 / 阴影 / 毛玻璃 / 交互工具类（全部走变量）
+  ===================================================== */
+  .rounded-sm { border-radius: var(--radius-xs); }
+  .rounded-lg { border-radius: var(--radius-input); }
+  .rounded-xl { border-radius: var(--radius-btn); }
+  .rounded-2xl { border-radius: var(--radius-card); }
+  .rounded-3xl { border-radius: var(--radius-panel); }
+  .rounded-full { border-radius: 9999px; }
+  .border { border-width: 1px; border-style: solid; }
+  .border-2 { border-width: 2px; border-style: solid; }
+  .border-t { border-top-width: 1px; border-top-style: solid; }
+  .border-dashed { border-style: dashed; }
+  .border-white { border-color: var(--surface-border); }
+  .border-white\/40 { border-color: var(--panel-border-color); border-width: var(--panel-border-width); }
+  .border-white\/50 { border-color: var(--divider-color); }
+  .border-gray-300\/70 { border-color: var(--input-border-color); }
+  .shadow { box-shadow: var(--shadow-xs); }
+  .shadow-md { box-shadow: var(--shadow-sm); }
+  .shadow-lg { box-shadow: var(--shadow-md); }
+  .shadow-xl { box-shadow: var(--shadow-lg); }
+  .shadow-2xl { box-shadow: var(--shadow-lg); }
+  .shadow-emerald-500\/25 { box-shadow: var(--shadow-sm); }
+  .shadow-emerald-500\/30 { box-shadow: var(--btn-shadow); }
+  .shadow-emerald-500\/40 { box-shadow: var(--btn-shadow-hover); }
+  .shadow-emerald-600\/40 { box-shadow: var(--shadow-pin); }
+  .backdrop-blur-xl { -webkit-backdrop-filter: blur(var(--panel-blur)); backdrop-filter: blur(var(--panel-blur)); }
+  .outline-none { outline: none; }
+  .transition { transition: all 0.2s ease; }
+  .transition-transform { transition: transform 0.2s ease; }
+  .cursor-pointer { cursor: pointer; }
+  .cursor-move { cursor: move; }
+  .select-none { user-select: none; }
+  .resize-none { resize: none; }
+  .thin-scroll { scrollbar-width: thin; }
+  .max-w-\[80\%\] { max-width: 80%; }
+  .hover\:bg-black\/5:hover { background-color: var(--hover-overlay); }
+  .hover\:bg-gray-200\/80:hover { background-color: var(--hover-overlay); }
+  .hover\:border-emerald-400:hover { border-color: var(--accent); }
+  .hover\:bg-emerald-50\/40:hover { background-color: var(--accent-soft); }
+  .hover\:scale-105:hover { transform: scale(1.05); }
+  .hover\:scale-\[1\.02\]:hover { transform: scale(1.02); }
+  .hover\:shadow-xl:hover { box-shadow: var(--shadow-lg); }
+  .hover\:shadow-emerald-500\/40:hover { box-shadow: var(--btn-shadow-hover); }
+  .hover\:text-emerald-700:hover { color: var(--accent-strong); }
+  .active\:scale-\[0\.99\]:active { transform: scale(0.99); }
+  .focus\:ring-2:focus { box-shadow: 0 0 0 3px var(--focus-ring); }
+  .focus\:ring-emerald-400\/40:focus { box-shadow: 0 0 0 3px var(--focus-ring); }
+
+  /* =====================================================
+     八、真实 API 联动样式（按钮加载动画 / 思考气泡 / 绿色路线）
+  ===================================================== */
+  .spin { display: inline-block; animation: btn-spin 0.8s linear infinite; }
+  @keyframes btn-spin { to { transform: rotate(360deg); } }
+  .think-dots i { font-style: normal; animation: dot-fade 1.2s ease-in-out infinite; }
+  .think-dots i:nth-child(2) { animation-delay: 0.2s; }
+  .think-dots i:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot-fade { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+  /* 行程路线：绿色虚线（用户指定） */
+  .route-line-trip { stroke: #22C55E; stroke-dasharray: 10 14; animation: dash-flow 1.2s linear infinite; }
+
+  /* =====================================================
+     数字向导「游小仙」头像（DiceBear 固定 seed，形象稳定不变）
+     加载失败时底层显示渐变「仙」字徽章，保证任何网络下都有头像
+  ===================================================== */
+  .yx-avatar { position: relative; flex-shrink: 0; overflow: hidden; background: linear-gradient(135deg, #6ee7b7, #3b82f6); }
+  .yx-avatar .yx-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+  .yx-avatar img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .yx-avatar-sm { width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; font-size: 0.65rem; }
+  .yx-avatar-lg { width: 4rem; height: 4rem; border-radius: 1rem; font-size: 1.25rem; }
+  </style>
+</head>
+
+<body class="theme-business relative w-screen h-screen overflow-hidden font-sans text-slate-800 antialiased">
+
+  <!-- ============ 地图兜底装饰层（瓦片失败时按主题呈现） ============ -->
+  <div class="map-decor" aria-hidden="true">
+    <i class="cloud c1" style="top: 18%;"></i>
+    <i class="cloud c2" style="top: 34%;"></i>
+    <i class="cloud c3" style="top: 62%;"></i>
+    <i class="star s1" style="top: 14%; left: 22%;"></i>
+    <i class="star s2" style="top: 28%; left: 68%;"></i>
+    <i class="star s3" style="top: 52%; left: 40%;"></i>
+    <i class="star s4" style="top: 72%; left: 82%;"></i>
+    <i class="star s5" style="top: 42%; left: 12%;"></i>
+  </div>
+
+  <!-- ============ 全屏 Leaflet 地图 ============ -->
+  <div id="map" class="absolute inset-0 w-screen h-screen"></div>
+  <div class="map-vignette"></div>
+
+  <!-- 底图加载失败提示（默认隐藏） -->
+  <div id="map-fallback" class="map-fallback hidden">地图底图加载失败 · 已切换为主题兜底背景，标记与路线不受影响</div>
+
+  <!-- ============ 主题切换器（左上角悬浮） ============ -->
+  <div class="theme-switcher" id="theme-switcher">
+    <button class="theme-toggle" id="theme-toggle" type="button">
+      <span class="theme-dot dot-business" id="theme-dot"></span>
+      <span id="theme-name">商务风</span>
+      <span class="theme-caret">▾</span>
+    </button>
+    <div class="theme-menu hidden" id="theme-menu">
+      <button type="button" data-theme="minimal"><span class="swatch sw-minimal"></span>简约风</button>
+      <button type="button" data-theme="business"><span class="swatch sw-business"></span>商务风</button>
+      <button type="button" data-theme="girly"><span class="swatch sw-girly"></span>少女风</button>
+      <button type="button" data-theme="playful"><span class="swatch sw-playful"></span>活泼风</button>
+    </div>
+  </div>
+
+  <!-- ============ 左侧悬浮毛玻璃面板 ============ -->
+  <div id="panel" class="panel absolute top-6 left-6 bottom-6 flex w-96 max-w-[calc(100vw-3rem)] flex-col overflow-hidden
+              rounded-3xl border border-white/40 bg-white/70 shadow-2xl backdrop-blur-xl"
+       style="z-index: 1000; box-shadow: var(--panel-shadow), var(--panel-inner-glow);">
+
+    <!-- 面板头部 -->
+    <div class="px-6 pt-6 pb-4">
+      <div class="flex items-center gap-3">
+        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400
+                    to-teal-500 text-lg font-bold text-white shadow-lg shadow-emerald-500/30">旅</div>
+        <div class="min-w-0">
+          <h1 class="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-base font-bold text-transparent">
+            AI 文旅伴游助手
+          </h1>
+          <p class="text-sm text-gray-500">沉浸式地图伴游工作台</p>
+        </div>
+        <span class="chip ml-auto shrink-0 px-2.5 py-1 text-[11px]">在线</span>
+      </div>
+
+      <!-- 六个功能标签：横向滑动（overflow-x-auto + flex-nowrap + whitespace-nowrap），滚动条隐藏 -->
+      <nav class="no-scrollbar mt-5 flex flex-nowrap whitespace-nowrap gap-2 overflow-x-auto" id="tabs">
+        <button type="button" class="tab tab-active" data-tab="trip">智能行程</button>
+        <button type="button" class="tab" data-tab="photo">拍照识景</button>
+        <button type="button" class="tab" data-tab="voice">方言导游</button>
+        <button type="button" class="tab" data-tab="ip">数字IP</button>
+        <button type="button" class="tab" data-tab="share">一键分享</button>
+        <button type="button" class="tab" data-tab="profile">👤 我的</button>
+      </nav>
+    </div>
+
+    <!-- 操作区 -->
+    <div class="thin-scroll flex-1 space-y-5 overflow-y-auto px-6 pb-6">
+
+      <!-- ======== 智能行程（动态规划 Agent） ======== -->
+      <section id="tab-trip" class="tab-panel space-y-4">
+        <div>
+          <p class="text-sm text-gray-500">说说你的旅行想法</p>
+          <textarea id="trip-input" rows="3" maxlength="200"
+            class="input-soft mt-2 w-full resize-none p-4 text-sm leading-relaxed"
+            placeholder="例如：北京一日游，想去故宫和天安门"></textarea>
+        </div>
+
+        <!-- 多维度表单：出行对象 / 预算范围 / 特殊偏好 -->
+        <div class="grid grid-cols-3 gap-2">
+          <select id="trip-people" class="input-soft px-3 py-2 text-xs">
+            <option value="">出行对象</option>
+            <option value="情侣">💕 情侣</option>
+            <option value="家人">👨‍👩‍👧 家人</option>
+            <option value="朋友">🧑‍🤝‍🧑 朋友</option>
+            <option value="独自">🚶 独自</option>
+          </select>
+          <select id="trip-budget" class="input-soft px-3 py-2 text-xs">
+            <option value="">预算范围</option>
+            <option value="穷游">🎒 穷游</option>
+            <option value="适中">💰 适中</option>
+            <option value="奢华">💎 奢华</option>
+          </select>
+          <select id="trip-preference" class="input-soft px-3 py-2 text-xs">
+            <option value="">特殊偏好</option>
+            <option value="美食">🍜 美食</option>
+            <option value="历史">🏛️ 历史</option>
+            <option value="拍照">📷 拍照</option>
+            <option value="休闲">🍵 休闲</option>
+          </select>
+        </div>
+
+        <button type="button" id="trip-generate" class="btn-primary w-full py-3 text-sm">
+          生成智能行程
+        </button>
+
+        <!-- 快捷干预按钮：点击即触发动态重排 -->
+        <div>
+          <p class="mb-2 text-xs text-gray-400">旅途中突发情况？一键让 AI 重新规划：</p>
+          <div class="flex gap-2">
+            <button type="button" class="trip-event-btn flex-1 rounded-xl border border-sky-200/70
+                           bg-sky-50/60 px-2 py-2 text-xs font-medium text-sky-700
+                           transition hover:bg-sky-100 active:scale-95" data-event="rain">
+              🌧️ 下雨了
+            </button>
+            <button type="button" class="trip-event-btn flex-1 rounded-xl border border-amber-200/70
+                           bg-amber-50/60 px-2 py-2 text-xs font-medium text-amber-700
+                           transition hover:bg-amber-100 active:scale-95" data-event="tired">
+              😫 走不动了
+            </button>
+            <button type="button" class="trip-event-btn flex-1 rounded-xl border border-rose-200/70
+                           bg-rose-50/60 px-2 py-2 text-xs font-medium text-rose-700
+                           transition hover:bg-rose-100 active:scale-95" data-event="overbudget">
+              💰 预算超了
+            </button>
+          </div>
+        </div>
+
+        <!-- 行程结果：空状态 → /api/trip/generate 返回后渲染 -->
+        <div id="trip-empty" class="card p-6 text-center">
+          <p class="text-2xl">🗺️</p>
+          <p class="mt-2 text-sm text-gray-500">描述你的旅行想法并点击上方按钮<br>AI 将规划真实路线，并在地图上打点连线</p>
+        </div>
+        <div id="trip-result" class="hidden space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="chip px-2.5 py-1 text-[11px] font-semibold">Day 1</span>
+            <span id="trip-title" class="text-sm font-medium text-slate-700"></span>
+          </div>
+          <!-- 天气建议 + 预算估算（动态规划 Agent 新增输出） -->
+          <div id="trip-advice" class="grid grid-cols-2 gap-2 hidden">
+            <div id="trip-weather" class="rounded-xl bg-sky-50/70 px-3 py-2 text-xs leading-relaxed text-sky-700"></div>
+            <div id="trip-budget-est" class="rounded-xl bg-emerald-50/70 px-3 py-2 text-xs leading-relaxed text-emerald-700"></div>
+          </div>
+          <!-- 坐标异常提示（后端剔除的景点） -->
+          <p id="trip-skipped" class="hidden text-xs text-amber-600"></p>
+          <div id="trip-timeline" class="relative space-y-4 pl-6">
+            <span class="timeline-rail"></span>
+          </div>
+          <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+        </div>
+        <p class="text-[11px] text-gray-400">提示：旅途中点击 🌧️/😫/💰 按钮，AI 会带着当前行程做动态重排。</p>
+      </section>
+
+      <!-- ======== 拍照识景 ======== -->
+      <section id="tab-photo" class="tab-panel hidden space-y-4">
+        <label class="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed
+                      border-gray-300/70 bg-gray-100/50 py-10 transition hover:border-emerald-400 hover:bg-emerald-50/40">
+          <span class="text-3xl">📷</span>
+          <span class="text-sm font-medium text-slate-600">上传景点 / 文物照片</span>
+          <span class="text-xs text-gray-400">AI 视觉识别 · glm-4v-flash</span>
+          <input id="photo-input" type="file" accept="image/*" class="hidden">
+        </label>
+
+        <!-- 识别结果卡片（内容由 /api/vision/identify 真实填充） -->
+        <div id="vision-result" class="card p-4 hidden">
+          <div class="flex gap-3">
+            <div id="vision-thumb" class="vision-thumb bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+              <span class="text-2xl">🏯</span>
+            </div>
+            <div class="min-w-0">
+              <p id="vision-name" class="text-sm font-semibold text-slate-800">识别中…</p>
+              <p id="vision-desc" class="mt-0.5 text-sm text-gray-500">正在调用 glm-4v-flash 分析图片</p>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-2">
+            <button type="button" id="vision-play" class="btn-primary px-3.5 py-1.5 text-xs font-medium">▶ 语音播报</button>
+            <button type="button" id="vision-fix" class="btn-ghost px-3.5 py-1.5 text-xs">✏️ 手动修正名称</button>
+          </div>
+          <p class="mt-2 text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+        </div>
+
+        <!-- 人工修正审计日志 -->
+        <div class="card p-4">
+          <p class="text-xs font-semibold text-gray-500">人工修正审计日志</p>
+          <ul id="audit-log" class="mt-2 space-y-1.5">
+            <li class="text-xs text-gray-400">暂无记录 · 修正识别名称后将自动记录</li>
+          </ul>
+        </div>
+        <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+      </section>
+
+      <!-- ======== 方言导游 ======== -->
+      <section id="tab-voice" class="tab-panel hidden space-y-4">
+        <div class="card p-4">
+          <div class="flex items-center gap-3">
+            <button type="button" id="voice-play" class="btn-primary h-11 w-11 shrink-0 rounded-full">▶</button>
+            <div class="min-w-0 flex-1">
+              <div class="h-1.5 overflow-hidden rounded-full bg-gray-200/80">
+                <div id="voice-progress" class="h-full w-1/3 rounded-full bg-emerald-500"></div>
+              </div>
+              <p id="voice-status" class="mt-2 truncate text-xs text-gray-500">点击播放按钮，AI 将生成景点讲解词</p>
+            </div>
+            <div id="voice-wave" class="wave">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="mt-4 space-y-3">
+            <div class="flex items-center gap-3">
+              <span class="w-14 shrink-0 text-xs text-gray-500">语言/方言</span>
+              <select id="dialect-select" class="input-soft flex-1 px-3 py-2 text-sm">
+                <option>普通话</option>
+                <option>四川话</option>
+                <option>粤语</option>
+                <option>英语</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-14 shrink-0 text-xs text-gray-500">语速</span>
+              <input id="rate-slider" type="range" min="0.5" max="2" step="0.1" value="1" class="flex-1">
+              <span id="rate-value" class="w-9 text-right text-xs text-gray-500">1.0x</span>
+            </div>
+          </div>
+        </div>
+        <!-- 讲解词卡片（由 /api/voice/generate 真实生成） -->
+        <div id="voice-text-card" class="card p-4 hidden">
+          <p class="text-xs font-semibold text-gray-500">讲解词（AI 生成 · 约 50 字）</p>
+          <p id="voice-text" class="mt-2 text-sm leading-relaxed text-slate-700"></p>
+          <p class="mt-2 text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+        </div>
+        <p class="text-xs text-gray-400">讲解词由 glm-4-flash 实时生成；语音由 Edge-TTS 真实合成，支持普通话 / 四川话 / 粤语 / 英语，语速可调。</p>
+        <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+      </section>
+
+      <!-- ======== 数字向导：游小仙 ======== -->
+      <section id="tab-ip" class="tab-panel hidden space-y-4">
+        <!-- 游小仙主展示卡片：DiceBear 固定 seed 头像 + 人设简介 -->
+        <div class="card flex items-center gap-4 p-4">
+          <span class="yx-avatar yx-avatar-lg">
+            <span class="yx-fallback">仙</span>
+            <img src="https://api.dicebear.com/10.x/lorelei/svg?seed=youxiaoxian"
+                 alt="游小仙" onerror="this.style.display='none'">
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold text-slate-800">游小仙
+              <span class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">在线</span>
+            </p>
+            <p class="mt-1 text-xs leading-relaxed text-gray-500">你的专属数字向导 · 温和、专业、耐心、靠谱、有活力的现代年轻私人导游</p>
+            <p class="mt-1.5 text-[11px] leading-relaxed text-gray-400">口头禅：「您的专属行程已规划好，我们慢慢逛。」</p>
+          </div>
+        </div>
+
+        <!-- 对话区（回答由 /api/ip/chat 以游小仙人设实时生成） -->
+        <div id="ip-chat" class="space-y-2.5">
+          <div class="flex gap-2">
+            <span class="yx-avatar yx-avatar-sm">
+              <span class="yx-fallback">仙</span>
+              <img src="https://api.dicebear.com/10.x/lorelei/svg?seed=youxiaoxian"
+                   alt="游小仙" onerror="this.style.display='none'">
+            </span>
+            <p class="bubble-ai max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-slate-700" style="border-top-left-radius: var(--radius-xs);">
+              您好呀，我是游小仙 👋 您的专属行程已规划好，我们慢慢逛。行程、识景、美食、避坑，随便问我！
+            </p>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <input id="ip-input" type="text" maxlength="100"
+            class="input-soft min-w-0 flex-1 px-4 py-2.5 text-sm"
+            placeholder="问游小仙任何旅行问题……">
+          <button type="button" id="ip-send" class="btn-primary shrink-0 px-4 py-2.5 text-sm">提问</button>
+        </div>
+        <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+      </section>
+
+      <!-- ======== 一键分享：三风格滑动卡片 ======== -->
+      <section id="tab-share" class="tab-panel hidden space-y-4">
+        <p class="text-sm text-gray-500">左右滑动卡片（或点两侧箭头），切换文案风格</p>
+
+        <!-- 滑动卡片容器：scroll-snap 自动吸附，触摸/鼠标拖拽/按钮均可切换 -->
+        <div class="share-stage">
+          <div id="share-track" class="share-track no-scrollbar">
+
+            <!-- 卡片一：文艺风 -->
+            <div class="share-card" data-style="art">
+              <div class="share-card-inner">
+                <div class="share-card-head">
+                  <span class="share-card-icon">🎭</span>
+                  <span class="share-card-name">文艺风</span>
+                  <span class="share-card-tag">AI 生成</span>
+                </div>
+                <p class="share-card-body" id="share-text-art">滑动到这里，AI 将基于你的行程与识景记录生成文艺风文案</p>
+                <div class="share-card-foot">
+                  <span class="share-card-count" id="share-count-art">共 0 字</span>
+                  <button type="button" class="share-copy text-xs font-medium text-emerald-600 transition hover:text-emerald-700"
+                          data-style="art">复制文案</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 卡片二：搞笑风 -->
+            <div class="share-card" data-style="fun">
+              <div class="share-card-inner">
+                <div class="share-card-head">
+                  <span class="share-card-icon">😂</span>
+                  <span class="share-card-name">搞笑风</span>
+                  <span class="share-card-tag">AI 生成</span>
+                </div>
+                <p class="share-card-body" id="share-text-fun">滑动到这里，AI 将生成一条有梗好玩的朋友圈文案</p>
+                <div class="share-card-foot">
+                  <span class="share-card-count" id="share-count-fun">共 0 字</span>
+                  <button type="button" class="share-copy text-xs font-medium text-emerald-600 transition hover:text-emerald-700"
+                          data-style="fun">复制文案</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 卡片三：吐槽风 -->
+            <div class="share-card" data-style="roast">
+              <div class="share-card-inner">
+                <div class="share-card-head">
+                  <span class="share-card-icon">🔥</span>
+                  <span class="share-card-name">吐槽风</span>
+                  <span class="share-card-tag">AI 生成</span>
+                </div>
+                <p class="share-card-body" id="share-text-roast">滑动到这里，AI 将生成一条毒舌吐槽的避坑向文案</p>
+                <div class="share-card-foot">
+                  <span class="share-card-count" id="share-count-roast">共 0 字</span>
+                  <button type="button" class="share-copy text-xs font-medium text-emerald-600 transition hover:text-emerald-700"
+                          data-style="roast">复制文案</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 左右切换按钮 -->
+          <button type="button" id="share-prev" class="share-nav-btn" aria-label="上一张">‹</button>
+          <button type="button" id="share-next" class="share-nav-btn" aria-label="下一张">›</button>
+        </div>
+
+        <!-- 指示点（与三张卡片一一对应） -->
+        <div class="share-dots" id="share-dots">
+          <span class="share-dot active" data-index="0"></span>
+          <span class="share-dot" data-index="1"></span>
+          <span class="share-dot" data-index="2"></span>
+        </div>
+
+        <p id="share-summary" class="text-xs text-gray-500">已提取 0 个行程节点 · 0 条识景修正记录</p>
+        <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+      </section>
+
+      <!-- ======== 我的（个人主页） ======== -->
+      <section id="tab-profile" class="tab-panel hidden space-y-5">
+        <!-- 一、旅行足迹图 -->
+        <div>
+          <p class="text-sm text-gray-500">旅行足迹图</p>
+          <div id="profile-footprint" class="card mt-2 p-4">
+            <div class="flex items-center gap-4">
+              <div class="text-center">
+                <p id="fp-spots" class="text-lg font-bold text-emerald-600">0</p>
+                <p class="text-[11px] text-gray-400">打卡景点</p>
+              </div>
+              <div class="text-center">
+                <p id="fp-trips" class="text-lg font-bold text-sky-600">0</p>
+                <p class="text-[11px] text-gray-400">规划行程</p>
+              </div>
+              <div class="text-center">
+                <p id="fp-cities" class="text-lg font-bold text-violet-600">0</p>
+                <p class="text-[11px] text-gray-400">足迹城市</p>
+              </div>
+            </div>
+            <div id="fp-chips" class="mt-3 flex flex-wrap gap-1.5">
+              <span class="text-xs text-gray-400">还没有足迹，去「智能行程」生成第一份计划吧</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 二、AI 旅行手账 -->
+        <div>
+          <p class="text-sm text-gray-500">AI 旅行手账</p>
+          <label class="mt-2 flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2
+                        border-dashed border-gray-300/70 bg-gray-100/50 py-8 transition
+                        hover:border-emerald-400 hover:bg-emerald-50/40">
+            <span class="text-3xl">📔</span>
+            <span class="text-sm font-medium text-slate-600">上传旅行照片，生成小红书风游记</span>
+            <span class="text-xs text-gray-400">glm-4v-flash 识别场景 · 自动结合你的行程记录</span>
+            <input id="journal-input" type="file" accept="image/*" class="hidden">
+          </label>
+          <div id="journal-result" class="card mt-3 hidden p-4">
+            <p id="journal-scene" class="text-xs text-gray-400"></p>
+            <p id="journal-text" class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700"></p>
+            <div class="mt-3 flex items-center justify-between">
+              <button type="button" id="journal-copy" class="text-xs font-medium text-emerald-600 transition hover:text-emerald-700">复制手账</button>
+              <span class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 三、行程复盘 -->
+        <div>
+          <p class="text-sm text-gray-500">行程复盘</p>
+          <div id="profile-review" class="card mt-2 p-4">
+            <p id="review-title" class="text-sm font-semibold text-slate-800">当前暂无行程</p>
+            <div class="mt-3 grid grid-cols-3 gap-2">
+              <div class="rounded-xl bg-sky-50/70 px-3 py-2 text-center">
+                <p id="review-duration" class="text-sm font-bold text-sky-700">—</p>
+                <p class="text-[11px] text-gray-400">游玩总时长</p>
+              </div>
+              <div class="rounded-xl bg-emerald-50/70 px-3 py-2 text-center">
+                <p id="review-cost" class="text-sm font-bold text-emerald-700">—</p>
+                <p class="text-[11px] text-gray-400">预估花费</p>
+              </div>
+              <div class="rounded-xl bg-violet-50/70 px-3 py-2 text-center">
+                <p id="review-spots" class="text-sm font-bold text-violet-700">0</p>
+                <p class="text-[11px] text-gray-400">打卡景点数</p>
+              </div>
+            </div>
+            <p class="mt-3 text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 面板底部合规标识 -->
+    <div class="border-t border-white/50 px-6 py-3 text-center" style="border-color: var(--divider-color);">
+      <p class="text-[11px] text-gray-400">[AIGC生成内容，已通过人工审核校正]</p>
+    </div>
+  </div>
+
+  <!-- 轻提示 -->
+  <div id="toast" class="toast"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* =====================================================
+       后端 API 基础地址（绝对地址）
+       说明：页面无论以 http://127.0.0.1:8000/ 方式打开，
+       还是以 file:// 双击本地文件方式打开，请求都能准确
+       到达 FastAPI 后端，不会出现 "Failed to fetch"。
+       若以后部署到线上，只需把此处改成正式域名即可。
+    ===================================================== */
+    var API_BASE = "http://127.0.0.1:8000";
+
+    /* =====================================================
+       轻提示
+    ===================================================== */
+    var toastEl = document.getElementById("toast");
+    var toastTimer = null;
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, 1800);
+    }
+
+    /* =====================================================
+       全屏地图（初始定位：北京故宫）
+       瓦片源：高德（主，国内稳定）+ GeoQ 智图（备），主源失败自动切换
+       坐标系：景点坐标为 WGS84，高德瓦片为 GCJ-02，
+               打点前统一做坐标纠偏，保证标记落在正确位置
+       兜底：Leaflet 本身加载失败 → 顶部提示条 + 主题兜底背景
+    ===================================================== */
+    /* ---------- WGS84 → GCJ-02（火星坐标）纠偏 ----------
+       高德瓦片使用 GCJ-02 坐标系，而大模型返回的是 WGS84 坐标，
+       两者在中国区域有约 50~600 米偏移，打点前必须转换。 */
+    var GCJ_A = 6378245.0, GCJ_EE = 0.00669342162296594323;
+    function gcjTransformLat(x, y) {
+      var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+      ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+      ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+      return ret;
+    }
+    function gcjTransformLng(x, y) {
+      var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+      ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+      ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+      return ret;
+    }
+    function wgs84ToGcj02(lng, lat) {
+      var dLat = gcjTransformLat(lng - 105.0, lat - 35.0);
+      var dLng = gcjTransformLng(lng - 105.0, lat - 35.0);
+      var radLat = lat / 180.0 * Math.PI;
+      var magic = Math.sin(radLat);
+      magic = 1 - GCJ_EE * magic * magic;
+      var sqrtMagic = Math.sqrt(magic);
+      dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI);
+      dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * Math.PI);
+      return { lng: lng + dLng, lat: lat + dLat };
+    }
+
+    function initMap() {
+      /* 外科手术式排错：初始化全过程包 try/catch，
+         任何一步崩溃都打印到控制台 + 顶栏显示具体原因，绝不静默失败 */
+      try {
+      console.log("[地图] initMap 开始执行，Leaflet 版本:", L.version);
+      var initPos = wgs84ToGcj02(116.3972, 39.9163); /* 故宫 WGS84 → GCJ-02 */
+      var map = L.map("map", { zoomControl: false }).setView([initPos.lat, initPos.lng], 15);
+      console.log("[地图] L.map 创建成功，中心:", initPos.lat.toFixed(5), initPos.lng.toFixed(5));
+
+      /* 瓦片源（按优先级）：高德（主，国内直连实测 200）→ 腾讯（备）→ GeoQ 智图（再备）
+         注意：Leaflet 不支持 {1-4} 范围写法（会抛 "No value provided for variable"），
+         多子域必须用 {s} + subdomains 选项实现 */
+      var TILE_SOURCES = [
+        {
+          url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+          opts: { subdomains: ['1', '2', '3', '4'], maxZoom: 18, minZoom: 3, attribution: '&copy; 高德地图' }
+        },
+        {
+          url: "https://rt{s}.map.gtimg.com/realtimerender?z={z}&x={x}&y={y}&type=vector&style=0",
+          opts: { subdomains: ["0", "1", "2", "3"], maxZoom: 18, minZoom: 3, attribution: "腾讯地图" }
+        },
+        {
+          url: "https://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineCommunity/MapServer/tile/{z}/{y}/{x}",
+          opts: { maxZoom: 18, minZoom: 3, attribution: "GeoQ 智图" }
+        }
+      ];
+
+      var sourceIndex = 0;
+      var tileLoaded = false;      /* 是否成功加载过至少一个瓦片（任一源成功即锁定） */
+      var consecutiveErrors = 0;   /* 当前源连续失败的瓦片数（成功一次即清零） */
+      var ERROR_THRESHOLD = 10;    /* 连续 10 个瓦片失败才切换源/弹兜底，杜绝一两个慢瓦片就切兜底 */
+      var sourceTimer = null;
+
+      var tiles = L.tileLayer(TILE_SOURCES[0].url, TILE_SOURCES[0].opts).addTo(map);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+
+      function onTileLoad() {
+        if (!tileLoaded) {
+          console.log("[地图] 首个瓦片加载成功，当前瓦片源:", TILE_SOURCES[sourceIndex].url);
+        }
+        tileLoaded = true;
+        consecutiveErrors = 0;     /* 成功一次立即清零，国内慢网络下不会误切源 */
+      }
+
+      /* 切换到下一档瓦片源；无更多源可切时返回 false（进而展示主题兜底背景） */
+      function switchToNextSource() {
+        if (sourceIndex >= TILE_SOURCES.length - 1) { return false; }
+        tiles.off("tileerror");            /* 摘掉旧源的事件，避免残留请求重复触发 */
+        map.removeLayer(tiles);
+        sourceIndex += 1;
+        consecutiveErrors = 0;             /* 新源重新计数 */
+        tiles = L.tileLayer(TILE_SOURCES[sourceIndex].url, TILE_SOURCES[sourceIndex].opts).addTo(map);
+        tiles.on("tileload", onTileLoad);
+        tiles.on("tileerror", onTileError);
+        return true;
+      }
+
+      function onTileError() {
+        if (tileLoaded) { return; }        /* 已成功加载过，零散失败不切换 */
+        consecutiveErrors += 1;
+        if (consecutiveErrors < ERROR_THRESHOLD) { return; }  /* 未达 10 连败阈值：静默等待 */
+        if (!switchToNextSource()) {
+          document.getElementById("map-fallback").classList.remove("hidden");
+        }
+      }
+
+      tiles.on("tileload", onTileLoad);
+      tiles.on("tileerror", onTileError);
+
+      /* 单源 8 秒无任何成功瓦片 → 主动切换下一档并继续计时；
+         超时从 4 秒放宽到 8 秒，给国内网络留足加载时间 */
+      function armSourceTimeout() {
+        clearTimeout(sourceTimer);
+        sourceTimer = setTimeout(function () {
+          if (tileLoaded) { return; }
+          if (switchToNextSource()) { armSourceTimeout(); }
+          else { document.getElementById("map-fallback").classList.remove("hidden"); }
+        }, 8000);
+      }
+      armSourceTimeout();
+
+      /* 行程路线图层：数字标记 + 绿色虚线（由 /api/trip/generate 真实数据驱动） */
+      var tripLayer = L.layerGroup().addTo(map);
+      window.renderTripOnMap = function (spots) {
+        tripLayer.clearLayers();
+        if (!spots || !spots.length) { return; }
+        var markers = [];
+        var invalidCount = 0;
+        spots.forEach(function (s) {
+          /* 防御性坐标过滤（后端已校验，前端双保险）：
+             非有限数字 / 超范围 / (0,0) 一律跳过并计数——
+             否则无效点会打到几内亚湾并污染 fitBounds 视野，表现为「点位显示不全」。 */
+          var lat = Number(s.lat);
+          var lng = Number(s.lng);
+          if (!isFinite(lat) || !isFinite(lng) ||
+              lat < -90 || lat > 90 || lng < -180 || lng > 180 ||
+              (Math.abs(lat) < 1e-6 && Math.abs(lng) < 1e-6)) {
+            invalidCount += 1;
+            return;
+          }
+          var gcj = wgs84ToGcj02(lng, lat); /* WGS84 → GCJ-02，匹配高德瓦片坐标系 */
+          var n = markers.length + 1;       /* 序号按有效点连续编号，避免断号 */
+          var icon = L.divIcon({
+            className: "map-pin-wrap",
+            html: '<div class="map-pin">' + n + "</div>",
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+            popupAnchor: [0, -22]
+          });
+          markers.push(
+            L.marker([gcj.lat, gcj.lng], { icon: icon }).addTo(tripLayer).bindPopup(
+              '<div class="popup-title">' + n + ". " + s.name + "</div>" +
+              '<div class="popup-desc">' + (s.time || "") + (s.desc ? " · " + s.desc : "") + "</div>" +
+              '<div class="popup-notice">[AIGC生成内容，已通过人工审核校正]</div>'
+            )
+          );
+        });
+
+        if (!markers.length) {
+          toast("所有景点坐标均异常，已跳过地图打点");
+          return;
+        }
+        if (invalidCount > 0) {
+          toast("已忽略 " + invalidCount + " 个坐标异常的景点");
+        }
+
+        var latlngs = markers.map(function (m) { return m.getLatLng(); });
+
+        /* 绿色虚线连接（用户指定） */
+        L.polyline(latlngs, {
+          weight: 4, opacity: 0.95, color: "#22C55E", dashArray: "10 14", className: "route-line-trip"
+        }).addTo(tripLayer);
+
+        /* 视野避开左侧面板；基于全部有效标记计算 bounds（而非 polyline bounds），
+           maxZoom 防止单点景点时缩放到月球 */
+        map.fitBounds(L.latLngBounds(latlngs), {
+          paddingTopLeft: [430, 70],
+          paddingBottomRight: [70, 70],
+          maxZoom: 16
+        });
+      };
+      } catch (e) {
+        /* 初始化崩溃不静默：控制台打印完整错误对象 + 顶栏显示具体原因 */
+        console.error("地图初始化崩溃:", e);
+        var fbEl = document.getElementById("map-fallback");
+        if (fbEl) {
+          fbEl.textContent = "地图初始化异常：" + (e && e.message ? e.message : String(e));
+          fbEl.classList.remove("hidden");
+        }
+      }
+    }
+
+    if (window.L) {
+      initMap();
+    } else {
+      /* Leaflet 两跳（/static/vendor/... 与相对路径 vendor/...）都失败：
+         给出可操作的明确提示，而不是笼统的"网络受限" */
+      console.error("[地图] Leaflet 加载失败：/static/vendor/leaflet/leaflet.js 与相对路径 vendor/leaflet/leaflet.js 均未生效");
+      document.getElementById("map-fallback").textContent =
+        "Leaflet 本地文件加载失败：请确认通过 http://127.0.0.1:8000 访问（而非双击本地文件），并按 F12 在 Network 中查看 leaflet.js 的状态码";
+      document.getElementById("map-fallback").classList.remove("hidden");
+    }
+
+    /* =====================================================
+       主题切换：body class 覆盖 CSS 变量，localStorage 记忆
+    ===================================================== */
+    var THEME_LABELS = { minimal: "简约风", business: "商务风", girly: "少女风", playful: "活泼风" };
+    var themeSwitcher = document.getElementById("theme-switcher");
+    var themeToggle = document.getElementById("theme-toggle");
+    var themeMenu = document.getElementById("theme-menu");
+    var themeDot = document.getElementById("theme-dot");
+    var themeName = document.getElementById("theme-name");
+    var themeButtons = themeMenu.querySelectorAll("button");
+
+    function applyTheme(name) {
+      document.body.classList.remove("theme-minimal", "theme-business", "theme-girly", "theme-playful");
+      document.body.classList.add("theme-" + name);
+      themeDot.className = "theme-dot dot-" + name;
+      themeName.textContent = THEME_LABELS[name];
+      themeButtons.forEach(function (b) {
+        b.classList.toggle("active", b.dataset.theme === name);
+      });
+      try { localStorage.setItem("travel-theme", name); } catch (e) {}
+    }
+
+    themeToggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      themeMenu.classList.toggle("hidden");
+    });
+    themeButtons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        applyTheme(b.dataset.theme);
+        themeMenu.classList.add("hidden");
+      });
+    });
+    document.addEventListener("click", function (e) {
+      if (!themeSwitcher.contains(e.target)) { themeMenu.classList.add("hidden"); }
+    });
+
+    var savedTheme = null;
+    try { savedTheme = localStorage.getItem("travel-theme"); } catch (e) {}
+    applyTheme(savedTheme && THEME_LABELS[savedTheme] ? savedTheme : "business");
+
+    /* =====================================================
+       标签切换：显式 switchTab(name)
+       1. 隐藏所有 .tab-panel，只显示目标页签 #tab-<name>（含「我的」#tab-profile）
+       2. 高亮对应标签按钮，并把按钮滚入导航可视区（窄屏横向滑动也能看到）
+       3. 页签专属刷新：切到「我的」刷新足迹/复盘；切到「一键分享」按需生成当前卡片
+    ===================================================== */
+    var tabs = document.querySelectorAll(".tab");
+
+    function switchTab(name) {
+      var panel = document.getElementById("tab-" + name);
+      if (!panel) { return; } /* 目标页签不存在时安全退出，不抛错 */
+      /* 1. 隐藏所有页签 → 只显示目标页签 */
+      document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.add("hidden"); });
+      panel.classList.remove("hidden");
+      /* 2. 标签按钮高亮切换 */
+      tabs.forEach(function (b) { b.classList.toggle("tab-active", b.dataset.tab === name); });
+      /* 3. 激活标签滚入导航可视区（inline:center 让当前标签居中可见） */
+      var activeBtn = document.querySelector('.tab[data-tab="' + name + '"]');
+      if (activeBtn && activeBtn.scrollIntoView) {
+        activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      }
+      /* 4. 页签专属逻辑 */
+      if (name === "profile") {
+        loadFootprint();
+        renderReview();
+      }
+      if (name === "share") {
+        updateShareUI();
+        var idx = currentShareIndex();
+        if (SHARE_STYLES[idx]) { generateShare(SHARE_STYLES[idx].key); }
+      }
+    }
+
+    tabs.forEach(function (btn) {
+      btn.addEventListener("click", function () { switchTab(btn.dataset.tab); });
+    });
+
+    /* =====================================================
+       全局状态（驱动分享上下文 / 讲解景点 / 审计计数）
+    ===================================================== */
+    var currentTripSpots = [];   // 当前行程节点（后端真实返回）
+    var currentTripTitle = "";   // 当前行程标题（复盘 / 手账上下文用）
+    var currentBudgetEst = "";   // 当前行程预算估算文本（复盘用）
+    var currentVisionName = "";  // 当前识景名称（含人工修正后的值）
+    var auditCount = 0;          // 人工修正次数
+    var journalCurrentText = ""; // 当前手账文案（复制用）
+
+    /* =====================================================
+       智能行程（动态规划 Agent）：POST /api/trip/generate
+       多维度输入：需求文本 + 出行对象 / 预算 / 偏好
+       快捷干预：🌧️下雨了 / 😫走不动了 / 💰预算超了（带当前行程动态重排）
+       拿到 JSON 后：时间轴 + 天气/预算卡片 + 地图打点 + 绿色虚线路线
+    ===================================================== */
+    var tripInput = document.getElementById("trip-input");
+    var tripBtn = document.getElementById("trip-generate");
+    var tripPeople = document.getElementById("trip-people");
+    var tripBudget = document.getElementById("trip-budget");
+    var tripPref = document.getElementById("trip-preference");
+    var EVENT_LABELS = { rain: "🌧️ 下雨了", tired: "😫 走不动了", overbudget: "💰 预算超了" };
+    var EVENT_APPEND = {
+      rain: "，如果下雨请多安排室内景点（博物馆/茶馆）",
+      tired: "，行程轻松一点，少走路",
+      overbudget: "，控制预算，多安排免费景点"
+    };
+
+    function renderTrip(data) {
+      var spots = data.spots || [];
+      currentTripSpots = spots;
+      currentTripTitle = data.title || "AI 定制行程";
+      currentBudgetEst = data.budget_estimate || "";
+      document.getElementById("trip-title").textContent = currentTripTitle;
+
+      /* 天气建议 + 预算估算（动态规划 Agent 输出，有数据才显示） */
+      var advice = document.getElementById("trip-advice");
+      var weatherEl = document.getElementById("trip-weather");
+      var budgetEstEl = document.getElementById("trip-budget-est");
+      var hasAdvice = !!(data.weather_tip || data.budget_estimate);
+      advice.classList.toggle("hidden", !hasAdvice);
+      if (data.weather_tip) {
+        weatherEl.textContent = "🌤️ " + data.weather_tip;
+        weatherEl.classList.remove("hidden");
+      } else {
+        weatherEl.classList.add("hidden");
+      }
+      if (data.budget_estimate) {
+        budgetEstEl.textContent = "💰 " + data.budget_estimate;
+        budgetEstEl.classList.remove("hidden");
+      } else {
+        budgetEstEl.classList.add("hidden");
+      }
+
+      /* 坐标异常被剔除的景点提示（后端 skipped 字段） */
+      var skippedEl = document.getElementById("trip-skipped");
+      var skipped = data.skipped || [];
+      if (skipped.length) {
+        skippedEl.textContent = "⚠️ 以下景点坐标异常或与其他景点重复，已从地图省略：" + skipped.join("、");
+        skippedEl.classList.remove("hidden");
+      } else {
+        skippedEl.classList.add("hidden");
+      }
+
+      /* 重建时间轴（保留轨道线，清掉旧节点） */
+      var timeline = document.getElementById("trip-timeline");
+      Array.prototype.slice.call(timeline.querySelectorAll(".trip-item")).forEach(function (n) {
+        n.remove();
+      });
+      Array.prototype.slice.call(timeline.querySelectorAll(".trip-transport")).forEach(function (n) {
+        n.remove();
+      });
+
+      /* 交通方式 → 图标 */
+      function transportIcon(t) {
+        if (/地铁|公交|轻轨/.test(t)) { return "🚇"; }
+        if (/步行/.test(t)) { return "🚶"; }
+        if (/打车|驾车|出租/.test(t)) { return "🚕"; }
+        if (/船|游船|轮渡/.test(t)) { return "⛵"; }
+        return "🧭";
+      }
+
+      spots.forEach(function (s, i) {
+        /* 景点之间的交通连接（智能交通规划）：虚线 + 交通建议胶囊 */
+        if (i > 0) {
+          var tr = document.createElement("div");
+          tr.className = "trip-transport";
+          var trText = document.createElement("span");
+          trText.className = "trip-transport-text";
+          trText.textContent = transportIcon(s.transport || "") + " " + (s.transport || "自由前往下一站");
+          tr.appendChild(trText);
+          timeline.appendChild(tr);
+        }
+        var item = document.createElement("div");
+        item.className = "relative trip-item";
+        var dot = document.createElement("span");
+        dot.className = "timeline-dot";
+        var time = document.createElement("p");
+        time.className = "text-xs font-bold text-emerald-600";
+        time.textContent = s.time || "";
+        var name = document.createElement("p");
+        name.className = "text-sm font-semibold text-slate-800";
+        name.textContent = (i + 1) + ". " + s.name;
+        var desc = document.createElement("p");
+        desc.className = "text-sm text-gray-500";
+        desc.textContent = s.desc || "";
+        item.appendChild(dot);
+        item.appendChild(time);
+        item.appendChild(name);
+        item.appendChild(desc);
+        timeline.appendChild(item);
+      });
+
+      document.getElementById("trip-empty").classList.add("hidden");
+      document.getElementById("trip-result").classList.remove("hidden");
+
+      /* 地图：数字打点 + 绿色虚线路线（Leaflet 不可用时仅提示） */
+      if (typeof window.renderTripOnMap === "function") {
+        window.renderTripOnMap(spots);
+      } else {
+        toast("地图组件暂不可用，已仅渲染行程时间轴");
+      }
+      updateShareSummary();
+      var msg = data.rearranged
+        ? "已按「" + (EVENT_LABELS[data.event] || "干预") + "」重新规划：" + spots.length + " 个新节点"
+        : "已生成 " + spots.length + " 个行程节点";
+      toast(msg);
+      renderReview();  // 刷新「我的」页签的行程复盘
+    }
+
+    /* 统一请求函数：event 为空=全新规划；event 存在=带当前行程动态重排 */
+    function requestTrip(event) {
+      var text = tripInput.value.trim();
+      if (!text) { toast("先描述你的旅行想法"); return; }
+      if (event && !currentTripSpots.length) {
+        toast("还没有行程可重排，请先生成一份行程");
+        return;
+      }
+      var payload = {
+        text: text,
+        people: tripPeople.value || "",
+        budget: tripBudget.value || "",
+        preference: tripPref.value || ""
+      };
+      var btnLabel = "生成智能行程";
+      if (event) {
+        payload.event = event;
+        payload.current_trip = { title: document.getElementById("trip-title").textContent, spots: currentTripSpots };
+        btnLabel = (EVENT_LABELS[event] || "重排中") + " 重新规划中…";
+      }
+      tripBtn.disabled = true;
+      tripBtn.innerHTML = '<span class="spin">⏳</span> ' + btnLabel;
+      fetch(API_BASE + "/api/trip/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "生成失败"); }
+          renderTrip(res.body);
+        })
+        .catch(function (err) {
+          toast("行程生成失败：" + err.message);
+        })
+        .then(function () {  // finally：恢复按钮
+          tripBtn.disabled = false;
+          tripBtn.innerHTML = "生成智能行程";
+        });
+    }
+
+    tripBtn.addEventListener("click", function () { requestTrip(""); });
+
+    /* 快捷干预按钮：无行程时把场景提示追加到输入框；有行程时直接触发动态重排 */
+    document.querySelectorAll(".trip-event-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var event = btn.dataset.event;
+        if (!currentTripSpots.length) {
+          tripInput.value = (tripInput.value.trim() + EVENT_APPEND[event]);
+          toast("已把「" + (EVENT_LABELS[event] || "") + "」的需求加进输入框，点击生成即可");
+          return;
+        }
+        requestTrip(event);
+      });
+    });
+
+    /* =====================================================
+       拍照识景：上传后 POST /api/vision/identify（glm-4v-flash 真实识别）
+       人工修正后 POST /api/vision/audit 上报后端留痕（人机协同）
+    ===================================================== */
+    var photoInput = document.getElementById("photo-input");
+    var visionResult = document.getElementById("vision-result");
+    var visionThumb = document.getElementById("vision-thumb");
+    var visionDesc = document.getElementById("vision-desc");
+    var currentImageName = "";
+
+    photoInput.addEventListener("change", function () {
+      var file = this.files && this.files[0];
+      if (!file) { return; }
+      currentImageName = file.name;
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        /* 1. 本地预览 */
+        visionThumb.style.backgroundImage = "url(" + e.target.result + ")";
+        visionThumb.textContent = "";
+        visionResult.classList.remove("hidden");
+        document.getElementById("vision-name").textContent = "识别中…";
+        visionDesc.textContent = "正在调用 glm-4v-flash 分析图片";
+
+        /* 2. 上传后端识别 */
+        var fd = new FormData();
+        fd.append("image", file);
+        fetch(API_BASE + "/api/vision/identify", { method: "POST", body: fd })
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+          })
+          .then(function (res) {
+            if (!res.ok) { throw new Error(res.body.detail || "识别失败"); }
+            document.getElementById("vision-name").textContent = res.body.name;
+            visionDesc.textContent = res.body.desc;
+            currentVisionName = res.body.name;
+            updateShareSummary();
+            toast("识别完成，可手动修正名称");
+          })
+          .catch(function (err) {
+            document.getElementById("vision-name").textContent = "识别失败";
+            visionDesc.textContent = err.message + "（可重新上传或手动修正名称）";
+          });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    /* 识景结果的语音播报：真实调用 Edge-TTS 朗读「景点名 + 讲解」 */
+    document.getElementById("vision-play").addEventListener("click", function () {
+      var name = document.getElementById("vision-name").textContent || "";
+      var desc = visionDesc.textContent || "";
+      if (!name || name.indexOf("识别失败") >= 0) { toast("请先上传图片完成识别"); return; }
+      var text = name + "。" + desc;
+      toast("Edge-TTS 正在合成讲解语音…");
+      fetch(API_BASE + "/api/voice/tts?text=" + encodeURIComponent(text) + "&dialect=" + encodeURIComponent("普通话"))
+        .then(function (r) {
+          if (!r.ok) { return r.json().then(function (j) { throw new Error(j.detail || "合成失败"); }); }
+          return r.blob();
+        })
+        .then(function (blob) {
+          var a = new Audio(URL.createObjectURL(blob));
+          a.play();
+          a.onended = function () { URL.revokeObjectURL(a.src); };
+          toast("正在播放识别讲解");
+        })
+        .catch(function (err) {
+          toast("语音合成失败：" + err.message);
+        });
+    });
+
+    var visionName = document.getElementById("vision-name");
+    var fixBtn = document.getElementById("vision-fix");
+    var auditLog = document.getElementById("audit-log");
+    var editing = false;
+
+    fixBtn.addEventListener("click", function () {
+      if (editing) { return; }
+      editing = true;
+      var input = document.createElement("input");
+      input.className = "vision-name-input";
+      input.value = visionName.textContent;
+      visionName.replaceWith(input);
+      input.focus();
+      fixBtn.textContent = "✓ 保存修正";
+
+      function save() {
+        var val = input.value.trim();
+        if (val && val !== visionName.textContent) {
+          var oldName = visionName.textContent;
+          var span = document.createElement("p");
+          span.id = "vision-name";
+          span.className = "text-sm font-semibold text-slate-800";
+          span.textContent = val;
+          input.replaceWith(span);
+          visionName = span;
+          var now = new Date();
+          var hh = String(now.getHours()).padStart(2, "0");
+          var mm = String(now.getMinutes()).padStart(2, "0");
+          var li = document.createElement("li");
+          li.className = "text-xs text-gray-400";
+          li.textContent = hh + ":" + mm + " 人工修正：AI 识别「" + oldName + "」→ 用户修正「" + val + "」";
+          if (auditLog.firstElementChild && auditLog.firstElementChild.textContent.indexOf("暂无记录") === 0) {
+            auditLog.innerHTML = "";
+          }
+          auditLog.insertBefore(li, auditLog.firstChild);
+          toast("已记录人工修正审计日志");
+          /* 上报后端留痕（内存存储 + 服务端终端打印），证明人机协同 */
+          auditCount += 1;
+          currentVisionName = val;
+          updateShareSummary();
+          fetch(API_BASE + "/api/vision/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ old_name: oldName, new_name: val, image_name: currentImageName })
+          }).catch(function () { /* 审计上报失败不影响本地记录 */ });
+        } else {
+          input.replaceWith(visionName);
+        }
+        fixBtn.textContent = "✏️ 手动修正名称";
+        editing = false;
+      }
+
+      input.addEventListener("blur", save);
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { input.blur(); }
+      });
+    });
+
+    /* =====================================================
+       方言导游：POST /api/voice/generate 生成真实讲解词（约 50 字）
+       播放按钮：GET /api/voice/tts 真实合成语音并用 Audio 播放
+    ===================================================== */
+    var dialectSelect = document.getElementById("dialect-select");
+    var voiceStatus = document.getElementById("voice-status");
+    var voicePlay = document.getElementById("voice-play");
+    var voiceWave = document.getElementById("voice-wave");
+    var voiceProgress = document.getElementById("voice-progress");
+    var voiceTextCard = document.getElementById("voice-text-card");
+    var voiceText = document.getElementById("voice-text");
+    var playing = false;
+    var voiceGenerating = false;
+
+    function generateVoiceGuide(onDone) {
+      if (voiceGenerating) { return; }
+      voiceGenerating = true;
+      var dialect = dialectSelect.value;
+      /* 讲解当前行程第一个景点，无行程时默认故宫 */
+      var spot = currentTripSpots.length ? currentTripSpots[0].name : "故宫博物院";
+      voiceStatus.textContent = "AI 正在为「" + spot + "」撰写" + dialect + "讲解词…";
+      fetch(API_BASE + "/api/voice/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dialect: dialect, spot: spot })
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "生成失败"); }
+          voiceText.textContent = res.body.text;
+          voiceTextCard.classList.remove("hidden");
+          voiceStatus.textContent = "讲解词已生成 · " + dialect + " · 即将调用 Edge-TTS 合成";
+          if (onDone) { onDone(); }
+        })
+        .catch(function (err) {
+          voiceStatus.textContent = "讲解词生成失败：" + err.message;
+        })
+        .then(function () {
+          voiceGenerating = false;
+        });
+    }
+
+    var rateSlider = document.getElementById("rate-slider");
+    var rateValue = document.getElementById("rate-value");
+    rateSlider.addEventListener("input", function () {
+      rateValue.textContent = parseFloat(this.value).toFixed(1) + "x";
+    });
+
+    /* =====================================================
+       Edge-TTS 真实语音播放
+       播放链路：讲解词（没有则先生成）→ GET /api/voice/tts → MP3 Blob
+       → Audio 对象真实播放；波形动画与进度条随播放状态真实联动
+    ===================================================== */
+    var ttsAudio = null;    /* 当前 Audio 对象 */
+    var ttsUrl = null;      /* 当前 Blob URL（更换音频时及时释放） */
+    var ttsLoading = false; /* 合成中，防止重复点击 */
+
+    function setPlayingUI(on) {
+      playing = on;
+      voicePlay.textContent = on ? "⏸" : "▶";
+      voiceWave.classList.toggle("playing", on);
+    }
+
+    function stopTTS() {
+      if (ttsAudio) {
+        ttsAudio.pause();
+        ttsAudio.currentTime = 0;
+      }
+      if (ttsUrl) { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
+      setPlayingUI(false);
+    }
+
+    /* 语速滑块（0.5x ~ 2.0x）→ Edge-TTS 速率参数（+0% / +50% / -30%） */
+    function currentRateParam() {
+      var v = parseFloat(rateSlider.value) || 1;
+      var pct = Math.round((v - 1) * 100);
+      return (pct >= 0 ? "+" : "") + pct + "%";
+    }
+
+    function playTTS() {
+      if (ttsLoading) { return; }
+      var text = voiceText.textContent.trim();
+      /* 尚未生成讲解词：先生成，成功后自动播放 */
+      if (!text) {
+        generateVoiceGuide(function () { playTTS(); });
+        return;
+      }
+      ttsLoading = true;
+      voicePlay.textContent = "⏳";
+      voiceStatus.textContent = "Edge-TTS 正在合成语音（" + dialectSelect.value + "）…";
+      var url = API_BASE + "/api/voice/tts?text=" + encodeURIComponent(text) +
+                "&dialect=" + encodeURIComponent(dialectSelect.value) +
+                "&rate=" + encodeURIComponent(currentRateParam());
+      fetch(url)
+        .then(function (r) {
+          if (!r.ok) {
+            return r.json().then(function (j) { throw new Error(j.detail || "语音合成失败"); });
+          }
+          return r.blob();
+        })
+        .then(function (blob) {
+          if (ttsUrl) { URL.revokeObjectURL(ttsUrl); }
+          ttsUrl = URL.createObjectURL(blob);
+          if (ttsAudio) { ttsAudio.pause(); }
+          ttsAudio = new Audio(ttsUrl);
+
+          ttsAudio.onplay = function () {
+            setPlayingUI(true);
+            voiceStatus.textContent = "正在播放 · " + dialectSelect.value;
+          };
+          ttsAudio.ontimeupdate = function () {
+            if (ttsAudio.duration) {
+              voiceProgress.style.width =
+                Math.round((ttsAudio.currentTime / ttsAudio.duration) * 100) + "%";
+            }
+          };
+          ttsAudio.onended = function () {
+            setPlayingUI(false);
+            voiceProgress.style.width = "0%";
+            voiceStatus.textContent = "播放完毕 · 再次点击可重新播放";
+          };
+          ttsAudio.onerror = function () {
+            setPlayingUI(false);
+            voiceStatus.textContent = "音频播放失败，请重试";
+          };
+
+          /* 真实播放（浏览器可能拦截未静音的自动播放，做降级提示） */
+          var p = ttsAudio.play();
+          if (p && p.catch) {
+            p.catch(function () {
+              setPlayingUI(false);
+              voiceStatus.textContent = "浏览器阻止了自动播放，请再点一次播放按钮";
+            });
+          }
+        })
+        .catch(function (err) {
+          setPlayingUI(false);
+          voiceStatus.textContent = "语音合成失败：" + err.message;
+          toast("语音合成失败：" + err.message);
+        })
+        .then(function () { ttsLoading = false; });
+    }
+
+    voicePlay.addEventListener("click", function () {
+      if (ttsLoading) { return; }
+      /* 播放中 → 暂停 */
+      if (ttsAudio && !ttsAudio.paused) {
+        ttsAudio.pause();
+        setPlayingUI(false);
+        voiceStatus.textContent = "已暂停";
+        return;
+      }
+      /* 已暂停（有播放进度）→ 继续播放 */
+      if (ttsAudio && ttsAudio.paused && ttsAudio.currentTime > 0 && ttsUrl) {
+        ttsAudio.play();
+        return;
+      }
+      /* 全新播放 */
+      stopTTS();
+      voiceProgress.style.width = "0%";
+      playTTS();
+    });
+
+    /* 切换方言：停止当前音频并清空讲解词，下次播放按新方言重新生成 */
+    dialectSelect.addEventListener("change", function () {
+      stopTTS();
+      voiceProgress.style.width = "0%";
+      voiceText.textContent = "";
+      voiceTextCard.classList.add("hidden");
+      voiceStatus.textContent = "已切换为" + this.value + "，点击播放按钮重新生成讲解词";
+    });
+
+    /* =====================================================
+       数字向导「游小仙」：POST /api/ip/chat（System Prompt 锁人设，实时生成）
+       头像统一使用 DiceBear 固定 seed（lorelei 风格），形象稳定不变
+       等待回复时显示「游小仙正在思考…」动画气泡
+    ===================================================== */
+    var YX_AVATAR = "https://api.dicebear.com/10.x/lorelei/svg?seed=youxiaoxian";
+    var YX_NAME = "游小仙";
+    var ipChat = document.getElementById("ip-chat");
+    var ipInput = document.getElementById("ip-input");
+    var ipHistory = [];
+
+    /* 生成一个游小仙头像元素（DiceBear 加载失败时底层显示渐变「仙」字徽章） */
+    function yxAvatar(sizeClass) {
+      var wrap = document.createElement("span");
+      wrap.className = "yx-avatar " + sizeClass;
+      var fb = document.createElement("span");
+      fb.className = "yx-fallback";
+      fb.textContent = "仙";
+      var img = document.createElement("img");
+      img.src = YX_AVATAR;
+      img.alt = YX_NAME;
+      img.onerror = function () { this.style.display = "none"; };
+      wrap.appendChild(fb);
+      wrap.appendChild(img);
+      return wrap;
+    }
+
+    function askIP() {
+      var text = ipInput.value.trim();
+      if (!text) { toast("先输入问题再提问"); return; }
+
+      /* 用户气泡 */
+      var userBubble = document.createElement("div");
+      userBubble.className = "flex justify-end";
+      var userP = document.createElement("p");
+      userP.className = "bubble-user max-w-[80%] rounded-2xl px-3.5 py-2 text-sm";
+      userP.style.borderTopRightRadius = "var(--radius-xs)";
+      userP.textContent = text;
+      userBubble.appendChild(userP);
+      ipChat.appendChild(userBubble);
+
+      /* 思考气泡（动画） */
+      var aiRow = document.createElement("div");
+      aiRow.className = "flex gap-2";
+      aiRow.appendChild(yxAvatar("yx-avatar-sm"));
+      var aiP = document.createElement("p");
+      aiP.className = "bubble-ai max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-slate-700";
+      aiP.style.borderTopLeftRadius = "var(--radius-xs)";
+      aiP.innerHTML = YX_NAME + "正在思考<span class=\"think-dots\"><i>.</i><i>.</i><i>.</i></span>";
+      aiRow.appendChild(aiP);
+      ipChat.appendChild(aiRow);
+      ipInput.value = "";
+      ipChat.scrollIntoView({ block: "nearest" });
+
+      /* 请求后端（System Prompt 已锁定游小仙人设与说话风格） */
+      fetch(API_BASE + "/api/ip/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persona: "youxiaoxian",
+          message: text,
+          history: ipHistory.slice(-10)
+        })
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "回答失败"); }
+          aiP.textContent = res.body.reply;
+          ipHistory.push({ role: "user", content: text });
+          ipHistory.push({ role: "assistant", content: res.body.reply });
+          if (ipHistory.length > 10) { ipHistory = ipHistory.slice(-10); }
+        })
+        .catch(function (err) {
+          aiP.textContent = "（" + YX_NAME + "顿了顿，网络不太给力：" + err.message + "）";
+        });
+    }
+
+    document.getElementById("ip-send").addEventListener("click", askIP);
+    ipInput.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { askIP(); }
+    });
+
+    /* =====================================================
+       一键分享：三风格滑动卡片（文艺 / 搞笑 / 吐槽）
+       滑动方式：scroll-snap 触摸滑动 + 左右箭头按钮 + 指示点点击
+       生成策略：滑动停顿后自动生成当前风格文案（按风格缓存，切回不重复请求）
+    ===================================================== */
+    var SHARE_STYLES = [
+      { key: "art",   name: "文艺风", hint: "滑动到这里，AI 将基于你的行程与识景记录生成文艺风文案" },
+      { key: "fun",   name: "搞笑风", hint: "滑动到这里，AI 将生成一条有梗好玩的朋友圈文案" },
+      { key: "roast", name: "吐槽风", hint: "滑动到这里，AI 将生成一条毒舌吐槽的避坑向文案" }
+    ];
+    var shareTrack = document.getElementById("share-track");
+    var shareCards = Array.prototype.slice.call(document.querySelectorAll(".share-card"));
+    var shareDots = Array.prototype.slice.call(document.querySelectorAll(".share-dot"));
+    var sharePrevBtn = document.getElementById("share-prev");
+    var shareNextBtn = document.getElementById("share-next");
+    var shareCache = { art: null, fun: null, roast: null };  /* 按风格缓存已生成文案 */
+    var shareScrollTimer = null;
+
+    function shareCardEls(style) {
+      return {
+        body: document.getElementById("share-text-" + style),
+        count: document.getElementById("share-count-" + style)
+      };
+    }
+
+    function updateShareCount(style) {
+      var els = shareCardEls(style);
+      if (els.body && els.count) {
+        els.count.textContent = "共 " + els.body.textContent.replace(/\s/g, "").length + " 字";
+      }
+    }
+
+    /* 重置缓存：行程 / 识景上下文变化后调用，切回卡片时按新上下文重新生成 */
+    function resetShareCache() {
+      shareCache = { art: null, fun: null, roast: null };
+      SHARE_STYLES.forEach(function (s) {
+        var els = shareCardEls(s.key);
+        if (els.body) { els.body.textContent = s.hint; }
+        updateShareCount(s.key);
+      });
+    }
+
+    /* 分享摘要：基于真实行程节点与人工修正记录（上下文变化时同步重置文案缓存） */
+    function updateShareSummary() {
+      var el = document.getElementById("share-summary");
+      if (el) {
+        el.textContent = "已提取 " + currentTripSpots.length + " 个行程节点 · " +
+          auditCount + " 条识景修正记录";
+      }
+      resetShareCache();
+    }
+
+    /* 当前居中卡片的索引（卡片间有 gap，按卡片中心点与轨道中心的距离计算） */
+    function currentShareIndex() {
+      if (!shareCards.length) { return 0; }
+      var center = shareTrack.scrollLeft + shareTrack.clientWidth / 2;
+      var best = 0, bestDist = Infinity;
+      shareCards.forEach(function (c, i) {
+        var cCenter = c.offsetLeft + c.offsetWidth / 2;
+        var d = Math.abs(cCenter - center);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+      return best;
+    }
+
+    function updateShareUI() {
+      var idx = currentShareIndex();
+      shareDots.forEach(function (d, i) { d.classList.toggle("active", i === idx); });
+      if (sharePrevBtn) { sharePrevBtn.disabled = idx <= 0; }
+      if (shareNextBtn) { shareNextBtn.disabled = idx >= shareCards.length - 1; }
+    }
+
+    /* 平滑滚动到指定卡片（scroll-snap 自动吸附，视觉上就是滑动切换） */
+    function scrollToShareCard(idx) {
+      var card = shareCards[idx];
+      if (!card) { return; }
+      var left = card.offsetLeft - (shareTrack.clientWidth - card.offsetWidth) / 2;
+      shareTrack.scrollTo({ left: left, behavior: "smooth" });
+    }
+
+    /* 生成某风格的文案（已有缓存则不重复请求） */
+    function generateShare(style) {
+      if (shareCache[style]) { return; }
+      var els = shareCardEls(style);
+      if (!els.body) { return; }
+
+      /* 组装上下文：行程节点 + 识景名称（全部来自真实数据） */
+      var ctxParts = [];
+      if (currentTripSpots.length) {
+        ctxParts.push("行程：" + currentTripSpots.map(function (s) { return s.name; }).join("、"));
+      }
+      if (currentVisionName) {
+        ctxParts.push("识景：" + currentVisionName);
+      }
+      var context = ctxParts.join("；") || "一次说走就走的城市旅行";
+
+      els.body.textContent = "AI 正在生成文案…";
+      updateShareCount(style);
+      fetch(API_BASE + "/api/share/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: style, context: context })
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "生成失败"); }
+          shareCache[style] = res.body.text;
+          els.body.textContent = res.body.text;
+          updateShareCount(style);
+          var idx = currentShareIndex();
+          toast((SHARE_STYLES[idx] ? SHARE_STYLES[idx].name : "分享") + "文案已生成");
+        })
+        .catch(function (err) {
+          els.body.textContent = "文案生成失败：" + err.message;
+          updateShareCount(style);
+        });
+    }
+
+    /* 滑动监听：停顿 150ms 视为停稳 → 刷新 UI + 按需生成当前卡片文案 */
+    shareTrack.addEventListener("scroll", function () {
+      updateShareUI();
+      clearTimeout(shareScrollTimer);
+      shareScrollTimer = setTimeout(function () {
+        var idx = currentShareIndex();
+        if (SHARE_STYLES[idx]) { generateShare(SHARE_STYLES[idx].key); }
+      }, 150);
+    });
+
+    /* 左右箭头按钮 */
+    if (sharePrevBtn) {
+      sharePrevBtn.addEventListener("click", function () {
+        scrollToShareCard(Math.max(0, currentShareIndex() - 1));
+      });
+    }
+    if (shareNextBtn) {
+      shareNextBtn.addEventListener("click", function () {
+        scrollToShareCard(Math.min(shareCards.length - 1, currentShareIndex() + 1));
+      });
+    }
+
+    /* 指示点点击直达对应卡片 */
+    shareDots.forEach(function (dot, i) {
+      dot.addEventListener("click", function () { scrollToShareCard(i); });
+    });
+
+    /* 每张卡片各自的复制按钮（复制该卡片已生成的文案） */
+    document.querySelectorAll(".share-copy").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var style = btn.dataset.style;
+        var text = shareCache[style] || "";
+        if (!text) { toast("文案还没生成，稍等一下"); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { toast("文案已复制"); });
+        } else {
+          var tmp = document.createElement("textarea");
+          tmp.value = text;
+          document.body.appendChild(tmp);
+          tmp.select();
+          document.execCommand("copy");
+          document.body.removeChild(tmp);
+          toast("文案已复制");
+        }
+      });
+    });
+
+    /* 初始化：UI 状态 + 摘要（不预生成，等用户滑到分享页再按需生成） */
+    updateShareUI();
+    updateShareSummary();
+
+    /* =====================================================
+       「我的」页签：旅行足迹图 + AI 旅行手账 + 行程复盘
+    ===================================================== */
+
+    /* —— 旅行足迹图：GET /api/travel/footprint —— */
+    function loadFootprint() {
+      fetch(API_BASE + "/api/travel/footprint")
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "足迹加载失败"); }
+          var data = res.body;
+          document.getElementById("fp-spots").textContent = data.total_spots || 0;
+          document.getElementById("fp-trips").textContent = data.total_trips || 0;
+          /* 城市数：从行程标题提取（去掉「一日游」等后缀，取前两字） */
+          var cities = {};
+          (data.records || []).forEach(function (r) {
+            var city = String(r.trip || "").replace(/\s|一日游|两日游|三日游|半日游/g, "").slice(0, 2);
+            if (city) { cities[city] = true; }
+          });
+          document.getElementById("fp-cities").textContent = Object.keys(cities).length;
+          /* 足迹 chips：最近 24 个打卡点 */
+          var chips = document.getElementById("fp-chips");
+          chips.innerHTML = "";
+          if (!data.records || !data.records.length) {
+            chips.innerHTML = '<span class="text-xs text-gray-400">还没有足迹，去「智能行程」生成第一份计划吧</span>';
+            return;
+          }
+          data.records.slice(-24).forEach(function (r) {
+            var chip = document.createElement("span");
+            chip.className = "chip px-2 py-0.5 text-[11px]";
+            chip.textContent = "📍 " + r.spot;
+            chips.appendChild(chip);
+          });
+        })
+        .catch(function (err) {
+          document.getElementById("fp-chips").innerHTML =
+            '<span class="text-xs text-rose-500">足迹加载失败：' + err.message + "</span>";
+        });
+    }
+
+    /* —— 行程复盘：总时长 / 预估花费 / 打卡景点数 —— */
+    function renderReview() {
+      var titleEl = document.getElementById("review-title");
+      var spots = currentTripSpots;
+      document.getElementById("review-spots").textContent = spots.length;
+      if (!spots.length) {
+        titleEl.textContent = "当前暂无行程";
+        document.getElementById("review-duration").textContent = "—";
+        document.getElementById("review-cost").textContent = "—";
+        return;
+      }
+      titleEl.textContent = currentTripTitle || "当前行程";
+
+      /* 总时长：首末景点时间差（HH:MM 差值） */
+      var toMin = function (t) { var p = String(t).split(":"); return (+p[0]) * 60 + (+p[1]); };
+      var times = spots.map(function (s) { return s.time; })
+        .filter(function (t) { return /^\d{1,2}:\d{2}$/.test(t || ""); });
+      var durationText = "—";
+      if (times.length >= 2) {
+        var diff = toMin(times[times.length - 1]) - toMin(times[0]);
+        if (diff > 0) {
+          durationText = (diff >= 60 ? Math.floor(diff / 60) + "小时" : "") +
+            (diff % 60 ? (diff % 60) + "分钟" : "");
+        }
+      }
+      document.getElementById("review-duration").textContent = durationText;
+
+      /* 预估花费：优先从后端 budget_estimate 提取人均金额，否则按 80 元/景点兜底 */
+      var costText = "约" + spots.length * 80 + "元";
+      var m = String(currentBudgetEst || "").match(/(\d+)\s*元/);
+      if (m) { costText = "人均约" + m[1] + "元"; }
+      document.getElementById("review-cost").textContent = costText;
+    }
+
+    /* —— AI 旅行手账：上传照片 → glm-4v 识别 + 结合行程生成小红书风游记 —— */
+    document.getElementById("journal-input").addEventListener("change", function () {
+      var file = this.files && this.files[0];
+      if (!file) { return; }
+      var fd = new FormData();
+      fd.append("image", file);
+      /* 上下文：当前行程标题 + 景点列表（真实数据） */
+      var ctx = "";
+      if (currentTripSpots.length) {
+        ctx = (currentTripTitle || "当前行程") + "：" +
+          currentTripSpots.map(function (s) { return s.name; }).join("、");
+      }
+      fd.append("context", ctx);
+
+      var result = document.getElementById("journal-result");
+      var sceneEl = document.getElementById("journal-scene");
+      var textEl = document.getElementById("journal-text");
+      result.classList.remove("hidden");
+      sceneEl.textContent = "📸 正在调用 glm-4v-flash 识别照片场景…";
+      textEl.textContent = "AI 正在结合你的行程撰写旅行手账…";
+      journalCurrentText = "";
+
+      fetch(API_BASE + "/api/travel/journal", {
+        method: "POST",
+        body: fd  /* multipart 上传，不手动设 Content-Type */
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+        })
+        .then(function (res) {
+          if (!res.ok) { throw new Error(res.body.detail || "手账生成失败"); }
+          sceneEl.textContent = "📸 识别场景：" + res.body.scene +
+            (res.body.vibe ? " · " + res.body.vibe : "");
+          textEl.textContent = res.body.journal;
+          journalCurrentText = res.body.journal;
+          toast("旅行手账已生成");
+        })
+        .catch(function (err) {
+          sceneEl.textContent = "";
+          textEl.textContent = "手账生成失败：" + err.message;
+        });
+    });
+
+    /* 手账复制（复用分享区的剪贴板逻辑） */
+    document.getElementById("journal-copy").addEventListener("click", function () {
+      if (!journalCurrentText) { toast("还没有生成手账"); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(journalCurrentText).then(function () { toast("手账已复制"); });
+      } else {
+        var tmp = document.createElement("textarea");
+        tmp.value = journalCurrentText;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand("copy");
+        document.body.removeChild(tmp);
+        toast("手账已复制");
+      }
+    });
+
+    /* 注：切换到「我的」页签时刷新足迹与复盘的逻辑，已合并进上方 switchTab()，
+       不再单独挂第二个 click 监听（避免同一按钮绑两件事、难以维护）。 */
+  })();
+  </script>
+</body>
+</html>
